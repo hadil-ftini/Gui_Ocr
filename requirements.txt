@@ -1,0 +1,5 @@
+ttkbootstrap
+opencv-python
+Pillow
+pytesseract
+numpy
