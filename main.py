@@ -112,11 +112,12 @@ class MainApp(tb.Window):
         self.keyboard_win = None
         self.current_kb_entry = None
         self._closing_keyboard = False  # Flag to prevent immediate reopening
+        self.current_kb_var = None      # Optional StringVar target for keyboard
 
     # ────────────────────────────────────────────────
     #               VIRTUAL KEYBOARD
     # ────────────────────────────────────────────────
-    def show_virtual_keyboard(self, entry, next_widget=None):
+    def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
         """
         Create and show the virtual keyboard when an Entry (or reference field)
         is focused or clicked. Reuses the same window if it already exists.
@@ -142,7 +143,9 @@ class MainApp(tb.Window):
         for widget in self.keyboard_win.winfo_children():
             widget.destroy()
 
+        # Remember which widget / variable should receive keyboard input
         self.current_kb_entry = entry
+        self.current_kb_var = kb_var
 
         kb_frame = tb.Frame(self.keyboard_win, bootstyle="dark")
         kb_frame.pack(pady=12, padx=10, fill="both", expand=True)
@@ -210,8 +213,8 @@ class MainApp(tb.Window):
         self.after(150, lambda: setattr(self, "_closing_keyboard", False))
 
     # Helper methods for Raspberry Pi / touch use: always ensure the
-    # text is written into the currently active entry and keep focus
-    # on that entry even while tapping the virtual keyboard.
+    # text is written into the currently active entry (or its StringVar)
+    # and keep focus on that entry even while tapping the virtual keyboard.
     def _kb_target_entry(self):
         entry = self.current_kb_entry
         if not entry:
@@ -223,6 +226,16 @@ class MainApp(tb.Window):
         return entry
 
     def _kb_insert_char(self, char):
+        # Prefer updating the bound StringVar if provided (more robust on Pi)
+        if self.current_kb_var is not None:
+            try:
+                current = self.current_kb_var.get()
+                self.current_kb_var.set(current + char)
+                return
+            except Exception:
+                # Fall back to widget-level operations
+                self.current_kb_var = None
+
         entry = self._kb_target_entry()
         if not entry:
             return
@@ -233,6 +246,15 @@ class MainApp(tb.Window):
             pass
 
     def _kb_backspace(self):
+        if self.current_kb_var is not None:
+            try:
+                text = self.current_kb_var.get()
+                if text:
+                    self.current_kb_var.set(text[:-1])
+                return
+            except Exception:
+                self.current_kb_var = None
+
         entry = self._kb_target_entry()
         if not entry:
             return
@@ -291,21 +313,24 @@ class MainApp(tb.Window):
         win.resizable(False, False)
 
         tb.Label(win, text="Reference Name:", font=("Helvetica", 11)).pack(pady=(20, 2))
-        name_entry = tb.Entry(win, width=50, font=("Helvetica", 12))
+        name_var = tk.StringVar()
+        name_entry = tb.Entry(win, width=50, font=("Helvetica", 12), textvariable=name_var)
         name_entry.pack(pady=4)
 
         tb.Label(win, text="Expected Text:", font=("Helvetica", 11)).pack(pady=(20, 2))
-        text_entry = tb.Entry(win, width=50, font=("Helvetica", 12))
+        text_var = tk.StringVar()
+        text_entry = tb.Entry(win, width=50, font=("Helvetica", 12), textvariable=text_var)
         text_entry.pack(pady=4)
 
-        name_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(name_entry, text_entry))
-        text_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(text_entry, None))
+        # Use StringVars with the virtual keyboard so it works reliably on Pi
+        name_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(name_entry, text_entry, name_var))
+        text_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(text_entry, None, text_var))
 
         name_entry.focus()
 
         def next_step():
-            name = name_entry.get().strip()
-            expected = text_entry.get().strip()
+            name = name_var.get().strip()
+            expected = text_var.get().strip()
             if not name or not expected:
                 tb.dialogs.Messagebox.show_error("Please fill both fields", title="Error")
                 return
@@ -327,14 +352,16 @@ class MainApp(tb.Window):
         pw_win.geometry("350x180")
 
         tb.Label(pw_win, text="Enter Password:", font=("Helvetica", 11)).pack(pady=20)
-        pw_entry = tb.Entry(pw_win, show="*", width=30, font=("Helvetica", 11))
+        pw_var = tk.StringVar()
+        pw_entry = tb.Entry(pw_win, show="*", width=30, font=("Helvetica", 11), textvariable=pw_var)
         pw_entry.pack(pady=5)
         pw_entry.focus()
 
-        pw_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(pw_entry, None))
+        # Use the same virtual keyboard with the password StringVar
+        pw_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(pw_entry, None, pw_var))
 
         def verify():
-            if pw_entry.get() == "tunitech":
+            if pw_var.get() == "tunitech":
                 pw_win.destroy()
                 self.show_archive_window()
                 self.hide_keyboard()
