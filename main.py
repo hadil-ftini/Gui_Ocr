@@ -132,11 +132,17 @@ class MainApp(tb.Window):
             self.keyboard_win.lift()
             self.keyboard_win.focus_force()
         else:
-            # Create new keyboard window
-            self.keyboard_win = tb.Toplevel(self)
+            # Create new keyboard window. On Raspberry Pi, it's more reliable
+            # to parent it to the toplevel window that owns the Entry and
+            # grab the focus, just like in your Hutchinson example.
+            parent_win = entry.winfo_toplevel()
+            self.keyboard_win = tb.Toplevel(parent_win)
             self.keyboard_win.title("Virtual Keyboard")
             self.keyboard_win.geometry("650x250+300+300")
             self.keyboard_win.resizable(False, False)
+            self.keyboard_win.transient(parent_win)
+            self.keyboard_win.grab_set()
+            self.keyboard_win.focus_set()
             # When user closes the window (X), use the same close logic as OK
             self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
 
