@@ -134,7 +134,7 @@ class MainApp(tb.Window):
             # Create new keyboard window
             self.keyboard_win = tb.Toplevel(self)
             self.keyboard_win.title("Virtual Keyboard")
-            self.keyboard_win.geometry("630x250+300+300")
+            self.keyboard_win.geometry("650x250+300+300")
             self.keyboard_win.resizable(False, False)
             # When user closes the window (X), use the same close logic as OK
             self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
@@ -160,7 +160,8 @@ class MainApp(tb.Window):
             for char in row_chars:
                 tb.Button(
                     row, text=char, width=5, bootstyle="info",
-                    command=lambda c=char: entry.insert(tk.END, c)
+                    # Always write into the currently active entry
+                    command=lambda c=char: self._kb_insert_char(c)
                 ).pack(side="left", padx=3)
 
         bottom = tb.Frame(kb_frame)
@@ -168,12 +169,12 @@ class MainApp(tb.Window):
 
         tb.Button(
             bottom, text="⌫", width=8, bootstyle="warning",
-            command=lambda: entry.delete(len(entry.get())-1, tk.END) if entry.get() else None
+            command=self._kb_backspace
         ).pack(side="left", padx=6)
 
         tb.Button(
             bottom, text="Space", width=24, bootstyle="secondary",
-            command=lambda: entry.insert(tk.END, " ")
+            command=self._kb_space
         ).pack(side="left", padx=6, expand=True, fill="x")
 
         if next_widget:
@@ -207,6 +208,43 @@ class MainApp(tb.Window):
         self.current_kb_entry = None
         # Allow keyboard to be opened again shortly after
         self.after(150, lambda: setattr(self, "_closing_keyboard", False))
+
+    # Helper methods for Raspberry Pi / touch use: always ensure the
+    # text is written into the currently active entry and keep focus
+    # on that entry even while tapping the virtual keyboard.
+    def _kb_target_entry(self):
+        entry = self.current_kb_entry
+        if not entry:
+            return None
+        try:
+            entry.focus_set()
+        except Exception:
+            pass
+        return entry
+
+    def _kb_insert_char(self, char):
+        entry = self._kb_target_entry()
+        if not entry:
+            return
+        try:
+            entry.icursor(tk.END)
+            entry.insert(tk.END, char)
+        except Exception:
+            pass
+
+    def _kb_backspace(self):
+        entry = self._kb_target_entry()
+        if not entry:
+            return
+        try:
+            text = entry.get()
+            if text:
+                entry.delete(len(text)-1, tk.END)
+        except Exception:
+            pass
+
+    def _kb_space(self):
+        self._kb_insert_char(" ")
 
     def hide_keyboard(self):
         """Backward-compatible alias kept for existing calls."""
