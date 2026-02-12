@@ -28,7 +28,7 @@ class MainApp(tb.Window):
 
         # Logo
         try:
-            logo_img = Image.open("logo.jpg")
+            logo_img = Image.open("logo.png")
             aspect_ratio = logo_img.width / logo_img.height
             new_height = 50
             new_width = int(new_height * aspect_ratio)
@@ -37,7 +37,7 @@ class MainApp(tb.Window):
             self.logo_label = tb.Label(self.header_frame, image=self.logo_tk, bootstyle="inverse-light")
             self.logo_label.pack(side="left", padx=10)
         except Exception:
-            self.logo_label = tb.Label(self.header_frame, text="HUTCHINSON", font=("Helvetica", 20, "bold"))
+            self.logo_label = tb.Label(self.header_frame, text="TUNITECH", font=("Helvetica", 20, "bold"))
             self.logo_label.pack(side="left", padx=10)
 
         # Theme selector
@@ -111,20 +111,33 @@ class MainApp(tb.Window):
         # Virtual keyboard window
         self.keyboard_win = None
         self.current_kb_entry = None
+        self._closing_keyboard = False  # Flag to prevent immediate reopening
 
     # ────────────────────────────────────────────────
     #               VIRTUAL KEYBOARD
     # ────────────────────────────────────────────────
     def show_virtual_keyboard(self, entry, next_widget=None):
+        """
+        Create and show the virtual keyboard when an Entry (or reference field)
+        is focused or clicked. Reuses the same window if it already exists.
+        """
+        # Don't open keyboard if we're in the process of closing it
+        if self._closing_keyboard:
+            return
+            
         if self.keyboard_win and self.keyboard_win.winfo_exists():
+            # If keyboard window exists but was hidden, show it again
+            self.keyboard_win.deiconify()
             self.keyboard_win.lift()
             self.keyboard_win.focus_force()
         else:
+            # Create new keyboard window
             self.keyboard_win = tb.Toplevel(self)
             self.keyboard_win.title("Virtual Keyboard")
-            self.keyboard_win.geometry("600x250+300+300")
+            self.keyboard_win.geometry("630x250+300+300")
             self.keyboard_win.resizable(False, False)
-            self.keyboard_win.protocol("WM_DELETE_WINDOW", self.hide_keyboard)
+            # When user closes the window (X), use the same close logic as OK
+            self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
 
         for widget in self.keyboard_win.winfo_children():
             widget.destroy()
@@ -163,18 +176,41 @@ class MainApp(tb.Window):
             command=lambda: entry.insert(tk.END, " ")
         ).pack(side="left", padx=6, expand=True, fill="x")
 
-        next_text = "Next →" if next_widget else "OK"
-        tb.Button(
-            bottom, text=next_text, width=10, bootstyle="success",
-            command=lambda: self._move_to_next(entry, next_widget)
-        ).pack(side="right", padx=6)
+        if next_widget:
+            tb.Button(
+                bottom, text="Next →", width=10, bootstyle="success",
+                command=lambda: self._move_to_next(entry, next_widget)
+            ).pack(side="right", padx=6)
+        else:
+            tb.Button(
+                bottom, text="OK", width=10, bootstyle="success",
+                command=lambda: self._close_keyboard()
+            ).pack(side="right", padx=6)
 
         entry.unbind("<Return>")
-        entry.bind("<Return>", lambda e: self._move_to_next(entry, next_widget))
+        if next_widget:
+            entry.bind("<Return>", lambda e: self._move_to_next(entry, next_widget))
+        else:
+            entry.bind("<Return>", lambda e: self._close_keyboard())
+
+    def _close_keyboard(self):
+        """Close/destroy the virtual keyboard window (used by OK button)."""
+        self._closing_keyboard = True  # Prevent immediate reopening during close
+        try:
+            if self.keyboard_win:
+                # Only destroy the keyboard window itself – do NOT quit the whole app
+                self.keyboard_win.destroy()
+        except Exception:
+            pass
+        # Clear references
+        self.keyboard_win = None
+        self.current_kb_entry = None
+        # Allow keyboard to be opened again shortly after
+        self.after(150, lambda: setattr(self, "_closing_keyboard", False))
 
     def hide_keyboard(self):
-        if self.keyboard_win and self.keyboard_win.winfo_exists():
-            self.keyboard_win.withdraw()
+        """Backward-compatible alias kept for existing calls."""
+        self._close_keyboard()
 
     def _move_to_next(self, current_entry, next_widget):
         # Move focus first
@@ -188,8 +224,8 @@ class MainApp(tb.Window):
             # Explicitly show keyboard for the next field
             self.after(100, lambda: self.show_virtual_keyboard(next_widget, None))
         else:
-            # No next field → just hide
-            self.after(80, self.hide_keyboard)
+            # No next field → close keyboard (OK behavior)
+            self._close_keyboard()
 
     # ────────────────────────────────────────────────
     #                   REFERENCES
@@ -377,6 +413,9 @@ class MainApp(tb.Window):
 
             self.adding_new_ref = False
             self.pending_ref = None
+            # Hide ROI overlay after saving; it will re-appear when this
+            # reference is selected from the dropdown.
+            self.camera.clear_roi()
 
         elif self.editing_ref:
             ref_name = self.editing_ref['name']
@@ -398,6 +437,9 @@ class MainApp(tb.Window):
             success_message_shown = True
 
             self.editing_ref = None
+            # Also hide ROI overlay after updating; it will show again
+            # when the reference is selected.
+            self.camera.clear_roi()
 
         else:
             self.camera.set_roi(x, y, w, h)

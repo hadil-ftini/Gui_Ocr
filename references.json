@@ -1,1 +1,112 @@
-[]
+[
+    {
+        "name": "TEST",
+        "expected_text": "34567",
+        "roi": [
+            90,
+            112,
+            310,
+            98
+        ]
+    },
+    {
+        "name": "123696",
+        "expected_text": "123658",
+        "roi": [
+            355,
+            247,
+            225,
+            89
+        ]
+    },
+    {
+        "name": "WS",
+        "expected_text": "22",
+        "roi": [
+            151,
+            119,
+            130,
+            106
+        ]
+    },
+    {
+        "name": "WWW",
+        "expected_text": "JJJJ",
+        "roi": [
+            478,
+            138,
+            141,
+            171
+        ]
+    },
+    {
+        "name": "1",
+        "expected_text": "GG",
+        "roi": [
+            218,
+            179,
+            257,
+            129
+        ]
+    },
+    {
+        "name": "WWW",
+        "expected_text": "MMM",
+        "roi": [
+            26,
+            46,
+            137,
+            64
+        ]
+    },
+    {
+        "name": "QQQ",
+        "expected_text": "JJJJ",
+        "roi": [
+            433,
+            61,
+            114,
+            134
+        ]
+    },
+    {
+        "name": "EEE",
+        "expected_text": "8888",
+        "roi": [
+            528,
+            368,
+            69,
+            102
+        ]
+    },
+    {
+        "name": "E",
+        "expected_text": "5",
+        "roi": [
+            98,
+            68,
+            119,
+            51
+        ]
+    },
+    {
+        "name": "WE",
+        "expected_text": "90",
+        "roi": [
+            555,
+            190,
+            82,
+            107
+        ]
+    },
+    {
+        "name": "C",
+        "expected_text": "1",
+        "roi": [
+            142,
+            152,
+            60,
+            58
+        ]
+    }
+]
