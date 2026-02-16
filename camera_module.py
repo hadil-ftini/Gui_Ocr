@@ -45,22 +45,17 @@ class CameraApp:
         ret, frame = self.cap.read()
         if not ret: return None
 
-        # Draw Permanent References
-        for ref in self.references:
-            if ref.get("roi"):
-                x, y, w, h = ref["roi"]
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 100), 2)
-                cv2.putText(frame, ref["name"], (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 100), 2)
-
-        # Draw Active ROI
+        # --- DRAWING LOGIC (Clean View) ---
+        
+        # 1. Draw Active ROI only (The one selected or just finished)
         if self.current_roi:
             x, y, w, h = self.current_roi
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 180, 255), 3)
 
-        # Draw Dragging Box
+        # 2. Draw Dragging Box (The orange preview)
         if self.temp_roi:
-            x, y, w, h = self.temp_roi
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 120, 0), 2)
+            tx, ty, tw, th = self.temp_roi
+            cv2.rectangle(frame, (tx, ty), (tx + tw, ty + th), (255, 120, 0), 2)
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil = Image.fromarray(rgb)
