@@ -7,27 +7,34 @@ import theme_module as tm
 import json
 import os
 
-
 class MainApp(tb.Window):
     def __init__(self):
         super().__init__(themename="superhero")
-        self.title("Check Ref")
-        self.geometry("1000x750")
-        # self.attributes('-fullscreen', True)  # uncomment only if needed
-
+        self.title("Check Ref - Tunitech")
+        self.geometry("1100x850")
+        
         self.running = True
-
-        # Data
         self.references = self.load_references()
         self.adding_new_ref = False
-        self.editing_ref = None
         self.pending_ref = None
 
-        # ─── Header ───
-        self.header_frame = tb.Frame(self, bootstyle="light")
-        self.header_frame.pack(side="top", fill="x", padx=10, pady=5)
+        # Virtual Keyboard State
+        self.keyboard_win = None
+        self.current_kb_entry = None
+        self.current_kb_var = None
+        self._closing_keyboard = False
 
-        # Logo
+        self.setup_ui()
+        
+        self.camera = cam.CameraApp()
+        self.start_camera()
+        self.update_camera()
+
+    def setup_ui(self):
+        # ─── Header ───
+        self.header = tb.Frame(self, bootstyle="light")
+        self.header.pack(side="top", fill="x", padx=10, pady=5)
+        
         try:
             logo_img = Image.open("logo.png")
             aspect_ratio = logo_img.width / logo_img.height
@@ -35,386 +42,248 @@ class MainApp(tb.Window):
             new_width = int(new_height * aspect_ratio)
             logo_img = logo_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             self.logo_tk = ImageTk.PhotoImage(logo_img)
-            self.logo_label = tb.Label(self.header_frame, image=self.logo_tk, bootstyle="inverse-light")
+            self.logo_label = tb.Label(self.header, image=self.logo_tk)
             self.logo_label.pack(side="left", padx=10)
-        except Exception:
-            self.logo_label = tb.Label(self.header_frame, text="TUNITECH", font=("Helvetica", 20, "bold"))
-            self.logo_label.pack(side="left", padx=10)
-
-        # Theme selector
-        self.theme_mb = tb.Menubutton(self.header_frame, text="Themes", bootstyle="primary")
+        except:
+            tb.Label(self.header, text="TUNITECH", font=("Helvetica", 20, "bold")).pack(side="left", padx=10)
+        
+        self.theme_mb = tb.Menubutton(self.header, text="Themes", bootstyle="primary")
         self.theme_mb.pack(side="right", padx=10)
         self.theme_menu = tb.Menu(self.theme_mb)
         for theme in tm.get_available_themes():
             self.theme_menu.add_command(label=theme, command=lambda t=theme: self.change_theme(t))
         self.theme_mb["menu"] = self.theme_menu
 
-        # Reference dropdown
         self.ref_var = tk.StringVar()
-        self.ref_combo = tb.Combobox(
-            self.header_frame,
-            textvariable=self.ref_var,
-            values=[ref['name'] for ref in self.references],
-            state="readonly",
-            width=25
-        )
+        self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
+                                     values=[r['name'] for r in self.references],
+                                     state="readonly", width=25)
         self.ref_combo.pack(side="right", padx=10)
+        self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
 
         # ─── Sidebar ───
         self.sidebar = tb.Frame(self, bootstyle="dark")
-        self.sidebar.pack(side="left", fill="y", padx=8, pady=10)
-
-        self.settings_btn = tb.Button(self.sidebar, text="⚙ Add Reference",
-                                      bootstyle="success", width=20,
-                                      command=self.open_settings)
-        self.settings_btn.pack(pady=12, padx=10)
-
-        self.archive_btn = tb.Button(self.sidebar, text="📁 Archive",
-                                     bootstyle="primary", width=20,
-                                     command=self.open_archive)
-        self.archive_btn.pack(pady=8, padx=10)
+        self.sidebar.pack(side="left", fill="y", padx=5, pady=5)
+        
+        tb.Button(self.sidebar, text="⚙ Add Reference", bootstyle="success", command=self.open_settings).pack(pady=10, padx=10, fill="x")
+        tb.Button(self.sidebar, text="📁 Archive", bootstyle="primary", command=self.open_archive).pack(pady=10, padx=10, fill="x")
+        tb.Button(self.sidebar, text="Clear Zone", bootstyle="warning", command=self.clear_zone).pack(pady=10, padx=10, fill="x")
 
         # ─── Main Content ───
         self.main_content = tb.Frame(self)
         self.main_content.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        
+        self.result_label = tb.Label(self.main_content, text="Ready", font=("Helvetica", 14), bootstyle="info")
+        self.result_label.pack(side="bottom", pady=10)
 
-        self.result_label = tb.Label(self.main_content,
-                                     text="Draw ROI to check reference",
-                                     font=("Helvetica", 16, "bold"),
-                                     bootstyle="info")
-        self.result_label.pack(side="bottom", pady=15)
-
-        self.controls_frame = tb.Frame(self.main_content)
-        self.controls_frame.pack(side="bottom", fill="x", pady=10)
-        self.stop_btn = tb.Button(self.controls_frame, text="Stop Camera", bootstyle="danger", command=self.stop_all)
-        self.stop_btn.pack(side="left", padx=10)
-        self.clear_zone_btn = tb.Button(self.controls_frame, text="Clear Zone", bootstyle="warning", command=self.clear_zone)
-        self.clear_zone_btn.pack(side="left", padx=10)
-
-        self.camera_frame = tb.Labelframe(self.main_content, text="Camera Feed")
-        self.camera_frame.pack(side="top", pady=10, padx=10, fill="both", expand=True)
+        self.camera_frame = tb.Labelframe(self.main_content, text="Live Feed")
+        self.camera_frame.pack(fill="both", expand=True)
         self.camera_label = tb.Label(self.camera_frame)
-        self.camera_label.pack(expand=True, fill="both")
-
-        # Mouse bindings for ROI
+        self.camera_label.pack(fill="both", expand=True)
+        
         self.camera_label.bind("<Button-1>", self.on_mouse_down)
         self.camera_label.bind("<B1-Motion>", self.on_mouse_drag)
         self.camera_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.rect_start = None
 
-        # ─── Camera ───
-        self.camera = cam.CameraApp()
-        self.start_camera()
-        self.update_camera()
-
-        self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
-
-        # ─── Virtual Keyboard support ───
-        self.keyboard_win = None
-        self.current_kb_entry = None
-        self.current_kb_var = None
-        self._closing_keyboard = False
-
-        # Global physical keyboard fallback (very useful on Raspberry Pi)
-        self.bind_all("<Key>", self._global_key_fallback, add="+")
-
-    def _global_key_fallback(self, event):
-        """Catch physical keyboard input when normal focus fails"""
-        if not self.current_kb_entry or not self.current_kb_entry.winfo_exists():
-            return
-
-        char = event.char
-        keysym = event.keysym
-
-        if char and char.isprintable():
-            self._kb_insert_char(char)
-        elif keysym == "BackSpace":
-            self._kb_backspace()
-        elif keysym in ("Return", "KP_Enter"):
-            self._close_keyboard()
-        elif keysym == "space":
-            self._kb_space()
-
-    # ────────────────────────────────────────────────
-    #               VIRTUAL KEYBOARD
-    # ────────────────────────────────────────────────
+    # ─── Minimized Virtual Keyboard ───
     def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
-        if self._closing_keyboard:
-            return
-
-        if self.keyboard_win and self.keyboard_win.winfo_exists():
-            self.keyboard_win.deiconify()
-            self.keyboard_win.lift()
-            self.keyboard_win.focus_force()
-        else:
-            parent = entry.winfo_toplevel()
-            self.keyboard_win = tb.Toplevel(parent)
-            self.keyboard_win.title("Virtual Keyboard")
-            self.keyboard_win.geometry("650x250+300+300")
-            self.keyboard_win.resizable(False, False)
-            self.keyboard_win.transient(parent)
-            self.keyboard_win.grab_set()
-            self.keyboard_win.focus_set()
-            self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
-
-        for w in self.keyboard_win.winfo_children():
-            w.destroy()
-
+        if self._closing_keyboard: return
         self.current_kb_entry = entry
         self.current_kb_var = kb_var
+        
+        if not self.keyboard_win or not self.keyboard_win.winfo_exists():
+            self.keyboard_win = tb.Toplevel(self)
+            self.keyboard_win.title("Keyboard")
+            self.keyboard_win.geometry("650x250+300+400")
+            self.keyboard_win.attributes("-topmost", True)
+            self.keyboard_win.resizable(False, False)
+            self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
+        
+        self._refresh_kb_layout(next_widget)
 
-        # Force focus on entry with delays (critical on Raspberry Pi)
-        self.after(30, entry.focus_set)
-        self.after(80, entry.focus_force)
-        self.after(150, lambda: entry.select_range(0, tk.END))
-        self.after(180, lambda: entry.icursor(tk.END))
+    def _refresh_kb_layout(self, next_widget):
+        for w in self.keyboard_win.winfo_children(): w.destroy()
+        main_frame = tb.Frame(self.keyboard_win, padding=5, bootstyle="secondary")
+        main_frame.pack(fill="both", expand=True)
 
-        kb_frame = tb.Frame(self.keyboard_win, bootstyle="dark")
-        kb_frame.pack(pady=12, padx=10, fill="both", expand=True)
+        rows = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
+        for r_chars in rows:
+            row_frame = tb.Frame(main_frame, bootstyle="secondary")
+            row_frame.pack(pady=2)
+            for char in r_chars:
+                btn = tb.Button(row_frame, text=char, width=5, bootstyle="light-outline",
+                               command=lambda c=char: self._kb_insert_char(c))
+                btn.pack(side="left", padx=2, ipady=4)
 
-        layout = [
-            "1234567890",
-            "QWERTYUIOP",
-            "ASDFGHJKL",
-            "ZXCVBNM"
-        ]
+        ctrl_row = tb.Frame(main_frame, bootstyle="secondary")
+        ctrl_row.pack(pady=8, fill="x", padx=10)
 
-        for row_chars in layout:
-            row = tb.Frame(kb_frame)
-            row.pack(pady=4, fill="x")
-            for char in row_chars:
-                tb.Button(
-                    row, text=char, width=5, bootstyle="info",
-                    command=lambda c=char: self._kb_insert_char(c)
-                ).pack(side="left", padx=3)
-
-        bottom = tb.Frame(kb_frame)
-        bottom.pack(pady=8, fill="x")
-
-        tb.Button(bottom, text="⌫", width=8, bootstyle="warning",
-                  command=self._kb_backspace).pack(side="left", padx=6)
-
-        tb.Button(bottom, text="Space", width=24, bootstyle="secondary",
-                  command=self._kb_space).pack(side="left", padx=6, expand=True, fill="x")
-
+        tb.Button(ctrl_row, text="⌫", width=8, bootstyle="danger-outline", 
+                  command=self._kb_backspace).pack(side="left", padx=2, ipady=5)
+        
+        tb.Button(ctrl_row, text="SPACE", bootstyle="light", 
+                  command=self._kb_space).pack(side="left", padx=2, expand=True, fill="x", ipady=5)
+        
         if next_widget:
-            tb.Button(
-                bottom, text="Next →", width=10, bootstyle="success",
-                command=lambda: self._move_to_next(entry, next_widget)
-            ).pack(side="right", padx=6)
+            cmd = lambda: self._move_to_next(self.current_kb_entry, next_widget)
+            btn_text, btn_style = "NEXT →", "success"
         else:
-            tb.Button(
-                bottom, text="OK", width=10, bootstyle="success",
-                command=lambda: self._close_keyboard()
-            ).pack(side="right", padx=6)
+            cmd = self._close_keyboard
+            btn_text, btn_style = "✔ DONE", "primary"
 
-        # Bind Return key
-        entry.unbind("<Return>")
-        if next_widget:
-            entry.bind("<Return>", lambda e: self._move_to_next(entry, next_widget))
-        else:
-            entry.bind("<Return>", lambda e: self._close_keyboard())
+        tb.Button(ctrl_row, text=btn_text, width=10, bootstyle=btn_style, 
+                  command=cmd).pack(side="right", padx=2, ipady=5)
+
+    def _move_to_next(self, current, next_widget):
+        next_widget.focus_set()
+        if isinstance(next_widget, (tb.Entry, tk.Entry)):
+            next_widget.select_range(0, tk.END)
+            next_widget.icursor(tk.END)
+        self.show_virtual_keyboard(next_widget, kb_var=getattr(next_widget, 'associated_var', None))
+
+    def _kb_insert_char(self, char):
+        if self.current_kb_var: self.current_kb_var.set(self.current_kb_var.get() + char)
+
+    def _kb_backspace(self):
+        if self.current_kb_var: self.current_kb_var.set(self.current_kb_var.get()[:-1])
+
+    def _kb_space(self): self._kb_insert_char(" ")
 
     def _close_keyboard(self):
         self._closing_keyboard = True
         if self.keyboard_win and self.keyboard_win.winfo_exists():
             self.keyboard_win.destroy()
-        self.keyboard_win = None
-        self.current_kb_entry = None
-        self.current_kb_var = None
+            self.keyboard_win = None
         self.after(200, lambda: setattr(self, "_closing_keyboard", False))
 
-    def _kb_target_entry(self):
-        if not self.current_kb_entry or not self.current_kb_entry.winfo_exists():
-            return None
-        try:
-            self.current_kb_entry.focus_set()
-            self.current_kb_entry.focus_force()
-        except:
-            pass
-        return self.current_kb_entry
+    # ─── Setup Window (Closes Keyboard on Destroy) ───
+    def open_settings(self):
+        win = tb.Toplevel(self)
+        win.title("Reference Setup")
+        win.geometry("520x340+50+50")
+        win.resizable(False, False)
 
-    def _kb_insert_char(self, char):
-        if self.current_kb_var:
-            try:
-                self.current_kb_var.set(self.current_kb_var.get() + char)
-                return
-            except:
-                self.current_kb_var = None
+        # FIX: Ensure keyboard closes if this window is closed
+        win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
+        
+        container = tb.Frame(win, padding=25)
+        container.pack(fill="both", expand=True)
 
-        entry = self._kb_target_entry()
-        if entry:
-            try:
-                entry.insert(tk.END, char)
-                entry.icursor(tk.END)
-            except:
-                pass
+        tb.Label(container, text="Reference Name:", font=("Helvetica", 11)).pack(anchor="w")
+        name_var = tk.StringVar()
+        e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", 12))
+        e1.associated_var = name_var
+        e1.pack(fill="x", pady=(5, 15))
 
-    def _kb_backspace(self):
-        if self.current_kb_var:
-            try:
-                txt = self.current_kb_var.get()
-                if txt:
-                    self.current_kb_var.set(txt[:-1])
-                return
-            except:
-                self.current_kb_var = None
+        tb.Label(container, text="Expected Text:").pack(anchor="w")
+        text_var = tk.StringVar()
+        e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", 12))
+        e2.associated_var = text_var
+        e2.pack(fill="x", pady=(5, 20))
 
-        entry = self._kb_target_entry()
-        if entry:
-            try:
-                txt = entry.get()
-                if txt:
-                    entry.delete(len(txt)-1, tk.END)
-            except:
-                pass
+        e1.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(e1, e2, name_var))
+        e2.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(e2, None, text_var))
 
-    def _kb_space(self):
-        self._kb_insert_char(" ")
+        def confirm():
+            name = name_var.get().strip()
+            expected = text_var.get().strip()
+            if name and expected:
+                self.pending_ref = {"name": name, "expected_text": expected, "roi": None}
+                self.adding_new_ref = True
+                win.destroy() # This will now trigger the keyboard closure automatically
+                self.result_label.configure(text=f"Please draw the ROI for: {name}", bootstyle="warning")
+            else:
+                tb.dialogs.Messagebox.show_error("All fields are required!", title="Error")
 
-    def hide_keyboard(self):
-        self._close_keyboard()
+        tb.Button(container, text="CONTINUE TO ROI", bootstyle="success", command=confirm).pack(pady=10, fill="x")
 
-    def _move_to_next(self, current, next_widget):
-        if next_widget:
-            next_widget.focus_set()
-            next_widget.focus_force()
-            if isinstance(next_widget, (tb.Entry, tk.Entry)):
-                next_widget.select_range(0, tk.END)
-                next_widget.icursor(tk.END)
-            self.after(120, lambda: self.show_virtual_keyboard(next_widget))
+    # ─── Mouse ROI & Success Logic ───
+    def on_mouse_up(self, event):
+        if not self.rect_start: return
+        x1, y1 = self.rect_start
+        x2, y2 = event.x, event.y
+        scale = 1 / self.camera.display_scale
+        rx, ry = int(min(x1, x2) * scale), int(min(y1, y2) * scale)
+        rw, rh = int(abs(x2 - x1) * scale), int(abs(y2 - y1) * scale)
+
+        if rw < 10 or rh < 10:
+            if self.adding_new_ref: self.result_label.configure(text="❌ ROI too small!", bootstyle="danger")
+            self.rect_start = None; self.camera.temp_roi = None
+            return
+
+        if self.adding_new_ref and self.pending_ref:
+            if any(r['name'] == self.pending_ref['name'] for r in self.references):
+                self.result_label.configure(text="❌ Reference exists!", bootstyle="danger")
+            else:
+                self.pending_ref["roi"] = (rx, ry, rw, rh)
+                self.references.append(self.pending_ref)
+                self.save_references()
+                self.update_ref_combo()
+                
+                tb.dialogs.Messagebox.show_info(
+                    title="Success",
+                    message=f"Reference '{self.pending_ref['name']}' saved successfully!",
+                    parent=self
+                )
+                self.result_label.configure(text=f"Active: {self.pending_ref['name']}", bootstyle="success")
+                self.ref_var.set(self.pending_ref['name'])
+                self.on_ref_selected(None)
+
+            self.adding_new_ref = False; self.pending_ref = None
         else:
-            self._close_keyboard()
+            self.camera.set_roi(rx, ry, rw, rh)
+            self.result_label.configure(text="ROI updated manually", bootstyle="info")
 
-    # ────────────────────────────────────────────────
-    #                   REFERENCES
-    # ────────────────────────────────────────────────
+        self.rect_start = None; self.camera.temp_roi = None
+
     def load_references(self):
         if os.path.exists("references.json"):
-            try:
-                with open("references.json", "r") as f:
-                    return json.load(f)
-            except:
-                return []
+            with open("references.json", "r") as f: return json.load(f)
         return []
 
     def save_references(self):
-        with open("references.json", "w") as f:
-            json.dump(self.references, f, indent=4)
+        with open("references.json", "w") as f: json.dump(self.references, f, indent=4)
 
     def update_ref_combo(self):
-        self.ref_combo['values'] = [ref['name'] for ref in self.references]
+        self.ref_combo['values'] = [r['name'] for r in self.references]
 
-    def open_settings(self):
-        win = tb.Toplevel(self)
-        win.title("Add New Reference")
-        win.geometry("520x340")
-        win.resizable(False, False)
-
-        tb.Label(win, text="Reference Name:", font=("Helvetica", 11)).pack(pady=(20, 2))
-        name_var = tk.StringVar()
-        name_entry = tb.Entry(win, width=50, font=("Helvetica", 12), textvariable=name_var)
-        name_entry.pack(pady=4)
-
-        tb.Label(win, text="Expected Text:", font=("Helvetica", 11)).pack(pady=(20, 2))
-        text_var = tk.StringVar()
-        text_entry = tb.Entry(win, width=50, font=("Helvetica", 12), textvariable=text_var)
-        text_entry.pack(pady=4)
-
-        name_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(name_entry, text_entry, name_var))
-        text_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(text_entry, None, text_var))
-
-        name_entry.focus()
-
-        def next_step():
-            name = name_var.get().strip()
-            expected = text_var.get().strip()
-            if not name or not expected:
-                tb.dialogs.Messagebox.show_error("Please fill both fields", title="Error")
-                return
-            win.destroy()
-            self.pending_ref = {'name': name, 'expected_text': expected, 'roi': None}
-            self.adding_new_ref = True
-            self.result_label.configure(text=f"Draw ROI for: {name}", bootstyle="warning")
-            self.hide_keyboard()
-
-        tb.Button(win, text="Draw ROI on Camera", bootstyle="primary",
-                  command=next_step, width=30).pack(pady=25)
-
-    # ─── Archive & other methods remain unchanged ───
-    # (keeping them out of this snippet for brevity – copy from your original if needed)
+    def on_ref_selected(self, event):
+        for r in self.references:
+            if r["name"] == self.ref_var.get():
+                self.camera.set_roi(*r["roi"])
+                self.camera.expected_text = r["expected_text"]
+                self.result_label.configure(text=f"Active: {r['name']}", bootstyle="info")
 
     def open_archive(self):
-        # ... your original code ...
-        pass
+        win = tb.Toplevel(self); win.title("Archive"); win.geometry("500x400")
+        cols = ("name", "text"); tree = tb.Treeview(win, columns=cols, show="headings")
+        tree.heading("name", text="Name"); tree.heading("text", text="Expected Text")
+        tree.pack(fill="both", expand=True, padx=10, pady=10)
+        for r in self.references: tree.insert("", "end", values=(r["name"], r["expected_text"]))
+        def delete():
+            sel = tree.selection()
+            if sel:
+                name = tree.item(sel[0])["values"][0]
+                self.references = [r for r in self.references if r["name"] != name]
+                self.save_references(); tree.delete(sel[0]); self.update_ref_combo()
+        tb.Button(win, text="Delete Selected", bootstyle="danger", command=delete).pack(pady=10)
 
-    def show_archive_window(self):
-        # ... your original code ...
-        pass
+    def start_camera(self): self.camera.start_camera(0)
+    def update_camera(self):
+        if self.running and self.camera.is_running:
+            img = self.camera.get_frame()
+            if img: self.camera_label.configure(image=img); self.camera_label.image = img
+        self.after(30, self.update_camera)
 
-    def delete_ref(self, tree):
-        # ... your original code ...
-        pass
-
-    def edit_ref(self, tree):
-        # ... your original code ...
-        pass
-
-    def start_edit(self, ref):
-        # ... your original code ...
-        pass
-
-    def on_mouse_down(self, event):
-        self.rect_start = (event.x, event.y)
-
+    def on_mouse_down(self, event): self.rect_start = (event.x, event.y)
     def on_mouse_drag(self, event):
         if self.rect_start:
             x1, y1 = self.rect_start
-            x2, y2 = event.x, event.y
-            if abs(x2 - x1) > 10 and abs(y2 - y1) > 10:
-                self.camera.set_roi_temp(x1, y1, x2 - x1, y2 - y1)
+            self.camera.set_roi_temp(x1, y1, event.x - x1, event.y - y1)
 
-    def on_mouse_up(self, event):
-        # ... your original code (very long – keep as is) ...
-        pass
-
-    def on_ref_selected(self, event=None):
-        # ... your original code ...
-        pass
-
-    def start_camera(self):
-        self.camera.start_camera(camera_index=1)
-        self.camera_label.configure(text="")
-
-    def stop_all(self):
-        self.running = False
-        self.camera.stop_camera()
-        self.camera_label.configure(image='', text="Camera Stopped")
-
-    def clear_zone(self):
-        self.camera.clear_roi()
-        self.result_label.configure(text="Zone cleared — draw new ROI if needed", bootstyle="warning")
-
-    def update_camera(self):
-        if not self.running:
-            return
-        if self.camera.is_running:
-            frame = self.camera.get_frame()
-            if frame:
-                self.camera_label.configure(image=frame)
-                self.camera_label.image = frame
-        self.after(30, self.update_camera)
-
-    def change_theme(self, theme_name):
-        tm.set_theme(self, theme_name)
-
-    def destroy(self):
-        self.running = False
-        self.camera.stop_camera()
-        if self.keyboard_win and self.keyboard_win.winfo_exists():
-            self.keyboard_win.destroy()
-        super().destroy()
-
+    def change_theme(self, name): tm.set_theme(self, name)
+    def clear_zone(self): self.camera.clear_roi(); self.result_label.configure(text="Zone Cleared", bootstyle="warning")
 
 if __name__ == "__main__":
     app = MainApp()
