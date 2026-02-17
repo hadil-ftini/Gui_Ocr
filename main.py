@@ -101,7 +101,7 @@ class MainApp(tb.Window):
             self.keyboard_win.attributes("-topmost", True)
             self.keyboard_win.resizable(False, False)
             self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
-            self.keyboard_win.transient(self) # Keep keyboard on top of main app
+            self.keyboard_win.transient(self)
         
         self.keyboard_win.lift()
         self._refresh_kb_layout(next_widget)
@@ -144,7 +144,6 @@ class MainApp(tb.Window):
         if isinstance(next_widget, (tb.Entry, tk.Entry)):
             next_widget.select_range(0, tk.END)
             next_widget.icursor(tk.END)
-        # Re-trigger keyboard for the next field
         self.show_virtual_keyboard(next_widget, kb_var=getattr(next_widget, 'associated_var', None))
 
     def _kb_insert_char(self, char):
@@ -163,10 +162,9 @@ class MainApp(tb.Window):
         if self.keyboard_win and self.keyboard_win.winfo_exists():
             self.keyboard_win.destroy()
             self.keyboard_win = None
-        # Cooldown prevents the keyboard from immediately popping back up due to focus lag
         self.after(300, lambda: setattr(self, "_closing_keyboard", False))
 
-    # ─── APP FUNCTIONALITY ───
+    # ─── SETTINGS WINDOW ───
     def open_settings(self):
         win = tb.Toplevel(self)
         win.title("Reference Setup")
@@ -174,7 +172,6 @@ class MainApp(tb.Window):
         win.resizable(False, False)
         win.attributes("-topmost", True)
         win.lift()
-        # Clean up keyboard if settings window is closed
         win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
         
         container = tb.Frame(win, padding=25)
@@ -192,7 +189,6 @@ class MainApp(tb.Window):
         e2.associated_var = text_var
         e2.pack(fill="x", pady=(5, 20))
 
-        # Using Button-1 (Click) is more stable for triggering virtual keyboards on touchscreens
         e1.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var)))
         e2.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var)))
 
@@ -210,6 +206,7 @@ class MainApp(tb.Window):
 
         tb.Button(container, text="CONTINUE TO ROI", bootstyle="success", command=confirm).pack(pady=10, fill="x")
 
+    # ─── ARCHIVE & PASSWORD WINDOW ───
     def open_archive(self):
         pwd_win = tb.Toplevel(self)
         pwd_win.title("Password Required")
@@ -223,6 +220,8 @@ class MainApp(tb.Window):
         pwd_entry = tb.Entry(pwd_win, textvariable=pwd_var, show="*")
         pwd_entry.pack(pady=5, padx=20, fill="x")
         pwd_entry.associated_var = pwd_var
+        
+        # FIX: Updated to Button-1 with delay to mirror the Settings behavior
         pwd_entry.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var)))
 
         def check_password():
@@ -299,6 +298,7 @@ class MainApp(tb.Window):
             et = tb.Entry(edit_win, textvariable=t_var); et.pack(pady=5)
             et.associated_var = t_var
 
+            # FIX: Updated these to Button-1 with delay for reliable triggering
             en.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(en, et, n_var)))
             et.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(et, None, t_var)))
 
