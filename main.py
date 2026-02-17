@@ -185,7 +185,6 @@ class MainApp(tb.Window):
         e2.associated_var = text_var
         e2.pack(fill="x", pady=(5, 20))
 
-        # FORCE FOCUS LOGIC
         def trigger_e1(e):
             e1.focus_set()
             e1.icursor(tk.END)
@@ -220,7 +219,7 @@ class MainApp(tb.Window):
         pwd_win.geometry("300x180")
         pwd_win.attributes("-topmost", True)
         pwd_win.lift()
-        pwd_win.position_center()
+        pwd_win.position_center()   # note: this method may not exist in all ttkbootstrap versions — if error, comment it out
 
         tb.Label(pwd_win, text="Enter Archive Password:").pack(pady=10)
 
@@ -229,15 +228,19 @@ class MainApp(tb.Window):
         pwd_entry.pack(pady=5, padx=20, fill="x")
         pwd_entry.associated_var = pwd_var
        
-        # ─── FIXED PART ───────────────────────────────
+        # ─── IMPROVED FOCUS FOR PASSWORD FIELD ───────────────────────────────
         def trigger_pwd(e):
             pwd_entry.focus_set()
             pwd_entry.icursor(tk.END)
-            self.after(150, lambda: pwd_entry.focus_force())          # ← added
-            self.after(100, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var))
+            # Extra focus push — very helpful on Raspberry Pi
+            pwd_win.after(50, pwd_entry.focus_set)
+            pwd_win.after(120, lambda: pwd_entry.focus_force())
+            pwd_win.after(180, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var))
 
         pwd_entry.bind("<Button-1>", trigger_pwd)
-        # ──────────────────────────────────────────────
+        # Also try to help when window first opens
+        pwd_win.after(200, lambda: trigger_pwd(None))  # simulate click after window appears
+        # ─────────────────────────────────────────────────────────────────────
 
         def check_password():
             if pwd_var.get() == "TUNITECH":
@@ -315,22 +318,18 @@ class MainApp(tb.Window):
             et.pack(pady=5)
             et.associated_var = t_var
 
-            # ─── FIXED PART ───────────────────────────────
             def trigger_en(e):
                 en.focus_set()
                 en.icursor(tk.END)
-                self.after(150, lambda: en.focus_force())           # ← added
                 self.after(100, lambda: self.show_virtual_keyboard(en, et, n_var))
 
             def trigger_et(e):
                 et.focus_set()
                 et.icursor(tk.END)
-                self.after(150, lambda: et.focus_force())           # ← added
                 self.after(100, lambda: self.show_virtual_keyboard(et, None, t_var))
 
             en.bind("<Button-1>", trigger_en)
             et.bind("<Button-1>", trigger_et)
-            # ──────────────────────────────────────────────
 
             def save_edit():
                 ref_data["name"] = n_var.get()
