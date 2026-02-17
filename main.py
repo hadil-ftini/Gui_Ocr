@@ -94,7 +94,7 @@ class MainApp(tb.Window):
             self.keyboard_win = tb.Toplevel(self)
             self.keyboard_win.title("Keyboard")
             self.keyboard_win.geometry("650x280+300+400")
-            self.keyboard_win.attributes("-topmost", True)
+            self.keyboard_win.attributes("-topmost", True)          # added - make keyboard always on top
             self.keyboard_win.resizable(False, False)
             self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
             self.keyboard_win.transient(self)
@@ -166,7 +166,7 @@ class MainApp(tb.Window):
         win.title("Reference Setup")
         win.geometry("520x340+50+50")
         win.resizable(False, False)
-        win.attributes("-topmost", True)
+        win.attributes("-topmost", True)                      # added - better stay on top
         win.lift()
         win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
        
@@ -217,9 +217,9 @@ class MainApp(tb.Window):
         pwd_win = tb.Toplevel(self)
         pwd_win.title("Password Required")
         pwd_win.geometry("300x180")
-        pwd_win.attributes("-topmost", True)
+        pwd_win.attributes("-topmost", True)                  # added - password win on top
         pwd_win.lift()
-        pwd_win.position_center()   # note: this method may not exist in all ttkbootstrap versions — if error, comment it out
+        # pwd_win.position_center()   # commented - may not exist or cause issues
 
         tb.Label(pwd_win, text="Enter Archive Password:").pack(pady=10)
 
@@ -228,18 +228,18 @@ class MainApp(tb.Window):
         pwd_entry.pack(pady=5, padx=20, fill="x")
         pwd_entry.associated_var = pwd_var
        
-        # ─── IMPROVED FOCUS FOR PASSWORD FIELD ───────────────────────────────
+        # ─── IMPROVED TIMING: keyboard shows AFTER window is ready ────────
         def trigger_pwd(e):
             pwd_entry.focus_set()
             pwd_entry.icursor(tk.END)
-            # Extra focus push — very helpful on Raspberry Pi
-            pwd_win.after(50, pwd_entry.focus_set)
-            pwd_win.after(120, lambda: pwd_entry.focus_force())
-            pwd_win.after(180, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var))
+            pwd_win.after(80, pwd_entry.focus_set)
+            pwd_win.after(180, lambda: pwd_entry.focus_force())
+            pwd_win.after(350, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var))  # delayed more
 
         pwd_entry.bind("<Button-1>", trigger_pwd)
-        # Also try to help when window first opens
-        pwd_win.after(200, lambda: trigger_pwd(None))  # simulate click after window appears
+
+        # NO auto-trigger on open → only when user clicks the field
+        # This prevents keyboard opening before password window is visible/usable
         # ─────────────────────────────────────────────────────────────────────
 
         def check_password():
@@ -256,7 +256,7 @@ class MainApp(tb.Window):
         win = tb.Toplevel(self)
         win.title("Archive Management")
         win.geometry("800x600")
-        win.attributes("-topmost", True)
+        win.attributes("-topmost", True)                      # added - archive manager on top
         win.lift()
        
         cols = ("name", "text")
@@ -304,7 +304,8 @@ class MainApp(tb.Window):
             edit_win = tb.Toplevel(win)
             edit_win.title("Edit Reference")
             edit_win.geometry("400x350")
-            edit_win.attributes("-topmost", True)
+            edit_win.attributes("-topmost", True)              # added - edit win on top
+            edit_win.lift()
            
             tb.Label(edit_win, text="Name:").pack(pady=5)
             n_var = tk.StringVar(value=ref_data["name"])
@@ -321,12 +322,16 @@ class MainApp(tb.Window):
             def trigger_en(e):
                 en.focus_set()
                 en.icursor(tk.END)
-                self.after(100, lambda: self.show_virtual_keyboard(en, et, n_var))
+                edit_win.after(80, en.focus_set)
+                edit_win.after(180, lambda: en.focus_force())
+                edit_win.after(350, lambda: self.show_virtual_keyboard(en, et, n_var))
 
             def trigger_et(e):
                 et.focus_set()
                 et.icursor(tk.END)
-                self.after(100, lambda: self.show_virtual_keyboard(et, None, t_var))
+                edit_win.after(80, et.focus_set)
+                edit_win.after(180, lambda: et.focus_force())
+                edit_win.after(350, lambda: self.show_virtual_keyboard(et, None, t_var))
 
             en.bind("<Button-1>", trigger_en)
             et.bind("<Button-1>", trigger_et)
