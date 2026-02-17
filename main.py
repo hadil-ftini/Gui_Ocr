@@ -50,7 +50,7 @@ class MainApp(tb.Window):
             self.theme_menu.add_command(label=theme, command=lambda t=theme: self.change_theme(t))
         self.theme_mb["menu"] = self.theme_menu
 
-        # DROPDOWN LIST
+        # DROPDOWN LIST (Auto-updates)
         self.ref_var = tk.StringVar()
         self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
                                      values=[r['name'] for r in self.references],
@@ -83,7 +83,7 @@ class MainApp(tb.Window):
         self.camera_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.rect_start = None
 
-    # ─── Virtual Keyboard Fix ───
+    # ─── Virtual Keyboard (Pi Optimized) ───
     def show_virtual_keyboard(self, entry, next_widget=None):
         if self._closing_keyboard: return
         self.current_kb_entry = entry
@@ -91,14 +91,15 @@ class MainApp(tb.Window):
         if not self.keyboard_win or not self.keyboard_win.winfo_exists():
             self.keyboard_win = tb.Toplevel(self)
             self.keyboard_win.title("Keyboard")
-            self.keyboard_win.geometry("700x350+200+450")
+            self.keyboard_win.geometry("700x350+200+400")
             self.keyboard_win.attributes("-topmost", True)
-            self.keyboard_win.resizable(False, False)
             self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
         
         self._refresh_kb_layout(next_widget)
+        self.keyboard_win.deiconify()
         self.keyboard_win.lift()
-        self.keyboard_win.update_idletasks()
+        self.keyboard_win.focus_force()
+        self.keyboard_win.update()
 
     def _refresh_kb_layout(self, next_widget):
         for w in self.keyboard_win.winfo_children(): w.destroy()
@@ -117,16 +118,16 @@ class MainApp(tb.Window):
         ctrl_row = tb.Frame(kb_frame)
         ctrl_row.pack(pady=10, fill="x")
 
-        tb.Button(ctrl_row, text="⌫ Back", width=8, bootstyle="danger", takefocus=False,
+        tb.Button(ctrl_row, text="⌫", width=6, bootstyle="danger", takefocus=False,
                   command=self._kb_backspace).pack(side="left", padx=2)
         
         tb.Button(ctrl_row, text="SPACE", bootstyle="secondary", takefocus=False,
                   command=lambda: self._kb_insert_char(" ")).pack(side="left", expand=True, fill="x", padx=5)
         
-        done_text = "NEXT →" if next_widget else "✔ DONE"
+        done_text = "NEXT" if next_widget else "DONE"
         done_cmd = (lambda: self._move_to_next(next_widget)) if next_widget else self._close_keyboard
         
-        tb.Button(ctrl_row, text=done_text, width=10, bootstyle="success", takefocus=False,
+        tb.Button(ctrl_row, text=done_text, width=8, bootstyle="success", takefocus=False,
                   command=done_cmd).pack(side="right", padx=2)
 
     def _kb_insert_char(self, char):
@@ -148,13 +149,13 @@ class MainApp(tb.Window):
         if self.keyboard_win:
             self.keyboard_win.destroy()
             self.keyboard_win = None
-        self.after(200, lambda: setattr(self, "_closing_keyboard", False))
+        self.after(300, lambda: setattr(self, "_closing_keyboard", False))
 
-    # ─── Core Logic ───
+    # ─── Logic: Add Reference & Success Message ───
     def open_settings(self):
         win = tb.Toplevel(self)
         win.title("Reference Setup")
-        win.geometry("500x350")
+        win.geometry("500x380")
         win.attributes("-topmost", True)
         
         container = tb.Frame(win, padding=20)
@@ -168,7 +169,10 @@ class MainApp(tb.Window):
         e2 = tb.Entry(container)
         e2.pack(fill="x", pady=5)
 
+        # Trigger on both Click (Touch) and Focus
+        e1.bind("<Button-1>", lambda e: self.show_virtual_keyboard(e1, e2))
         e1.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(e1, e2))
+        e2.bind("<Button-1>", lambda e: self.show_virtual_keyboard(e2, None))
         e2.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(e2, None))
 
         def confirm():
@@ -191,88 +195,79 @@ class MainApp(tb.Window):
         rw, rh = int(abs(event.x - x1) * scale), int(abs(event.y - y1) * scale)
 
         if self.adding_new_ref and self.pending_ref:
-            if any(r['name'] == self.pending_ref['name'] for r in self.references):
-                self.result_label.configure(text="❌ Reference exists!", bootstyle="danger")
-            else:
-                self.pending_ref["roi"] = (rx, ry, rw, rh)
-                self.references.append(self.pending_ref)
-                self.save_references()
-                
-                # REFRESH DROPDOWN LIST HERE
-                self.update_ref_combo() 
-                
-                self.camera.clear_roi()
-                tb.dialogs.Messagebox.show_info(
-                    title="Success",
-                    message=f"Reference '{self.pending_ref['name']}' saved successfully!",
-                    parent=self
-                )
-                self.result_label.configure(text="Reference Saved. Select from list to use.", bootstyle="success")
+            self.pending_ref["roi"] = (rx, ry, rw, rh)
+            self.references.append(self.pending_ref)
+            self.save_references()
+            
+            # REFRESH DROPDOWN
+            self.update_ref_combo()
+            
+            self.camera.clear_roi()
+            # SUCCESS MESSAGE
+            tb.dialogs.Messagebox.show_info("Success", f"Reference '{self.pending_ref['name']}' saved!", parent=self)
+            self.result_label.configure(text="Reference Saved Successfully", bootstyle="success")
             self.adding_new_ref = False
         else:
             self.camera.set_roi(rx, ry, rw, rh)
         self.rect_start = None
 
+    # ─── Archive: Delete All Functionality ───
     def open_archive(self):
         pwd_win = tb.Toplevel(self)
-        pwd_win.title("Password Required")
-        pwd_win.geometry("300x180")
-        pwd_win.attributes("-topmost", True)
+        pwd_win.title("Security")
+        pwd_win.geometry("300x200")
+        tb.Label(pwd_win, text="Password:").pack(pady=10)
+        p_entry = tb.Entry(pwd_win, show="*")
+        p_entry.pack(pady=5, padx=20, fill="x")
+        
+        p_entry.bind("<Button-1>", lambda e: self.show_virtual_keyboard(p_entry))
+        p_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(p_entry))
 
-        tb.Label(pwd_win, text="Enter Archive Password:").pack(pady=10)
-        pwd_entry = tb.Entry(pwd_win, show="*")
-        pwd_entry.pack(pady=5, padx=20, fill="x")
-        pwd_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(pwd_entry))
-
-        def check_password():
-            if pwd_entry.get() == "TUNITECH":
+        def check():
+            if p_entry.get() == "TUNITECH":
                 pwd_win.destroy()
                 self._close_keyboard()
                 self.show_archive_manager()
-            else:
-                tb.dialogs.Messagebox.show_error("Incorrect Password", parent=pwd_win)
-
-        tb.Button(pwd_win, text="Login", command=check_password).pack(pady=10)
+        tb.Button(pwd_win, text="Login", command=check).pack(pady=10)
 
     def show_archive_manager(self):
         win = tb.Toplevel(self)
-        win.title("Archive Management")
+        win.title("Archive")
         win.geometry("800x600")
-        
         cols = ("name", "text")
-        tree = tb.Treeview(win, columns=cols, show="headings", bootstyle="primary")
-        tree.heading("name", text="Reference Name"); tree.heading("text", text="Expected Text")
+        tree = tb.Treeview(win, columns=cols, show="headings")
+        tree.heading("name", text="Name"); tree.heading("text", text="Text")
         tree.pack(fill="both", expand=True, padx=10, pady=10)
 
         def refresh_tree():
-            for item in tree.get_children(): tree.delete(item)
+            for i in tree.get_children(): tree.delete(i)
             for r in self.references: tree.insert("", "end", values=(r["name"], r["expected_text"]))
         refresh_tree()
 
         btn_frame = tb.Frame(win)
-        btn_frame.pack(fill="x", pady=10, padx=10)
-
+        btn_frame.pack(fill="x", pady=10)
+        
         def delete_all():
-            if tb.dialogs.Messagebox.yesno("Delete EVERYTHING?", "Warning!", bootstyle="danger", parent=win):
+            if tb.dialogs.Messagebox.yesno("Delete all references?", "Confirm", parent=win):
                 self.references = []
                 self.save_references()
-                self.update_ref_combo() # REFRESH DROPDOWN
+                self.update_ref_combo() # UPDATE DROPDOWN
                 refresh_tree()
 
         def delete_selected():
             sel = tree.selection()
             if not sel: return
-            if tb.dialogs.Messagebox.yesno("Delete selected?", "Confirm", parent=win):
-                for item in sel:
-                    name = tree.item(item)["values"][0]
-                    self.references = [r for r in self.references if r["name"] != name]
-                self.save_references()
-                self.update_ref_combo() # REFRESH DROPDOWN
-                refresh_tree()
+            for item in sel:
+                name = tree.item(item)["values"][0]
+                self.references = [r for r in self.references if r["name"] != name]
+            self.save_references()
+            self.update_ref_combo() # UPDATE DROPDOWN
+            refresh_tree()
 
-        tb.Button(btn_frame, text="🗑 Delete Selected", bootstyle="danger-outline", command=delete_selected).pack(side="left", padx=5, expand=True, fill="x")
-        tb.Button(btn_frame, text="🔥 DELETE ALL", bootstyle="danger", command=delete_all).pack(side="left", padx=5, expand=True, fill="x")
+        tb.Button(btn_frame, text="🗑 Delete Selected", bootstyle="danger-outline", command=delete_selected).pack(side="left", padx=10, expand=True, fill="x")
+        tb.Button(btn_frame, text="🔥 DELETE ALL", bootstyle="danger", command=delete_all).pack(side="left", padx=10, expand=True, fill="x")
 
+    # ─── System / Data Helpers ───
     def load_references(self):
         if os.path.exists("references.json"):
             with open("references.json", "r") as f: return json.load(f)
@@ -282,7 +277,6 @@ class MainApp(tb.Window):
         with open("references.json", "w") as f: json.dump(self.references, f, indent=4)
 
     def update_ref_combo(self):
-        # This updates the actual widget list
         self.ref_combo['values'] = [r['name'] for r in self.references]
 
     def on_ref_selected(self, event):
@@ -307,6 +301,7 @@ class MainApp(tb.Window):
     def change_theme(self, name): tm.set_theme(self, name)
     def clear_zone(self): self.camera.clear_roi()
 
+# ─── THE MAIN FUNCTION ───
 if __name__ == "__main__":
     app = MainApp()
     app.mainloop()
