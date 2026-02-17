@@ -189,8 +189,19 @@ class MainApp(tb.Window):
         e2.associated_var = text_var
         e2.pack(fill="x", pady=(5, 20))
 
-        e1.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var)))
-        e2.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var)))
+        # FORCE FOCUS LOGIC
+        def trigger_e1(e):
+            e1.focus_set()
+            e1.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
+
+        def trigger_e2(e):
+            e2.focus_set()
+            e2.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
+
+        e1.bind("<Button-1>", trigger_e1)
+        e2.bind("<Button-1>", trigger_e2)
 
         def confirm():
             name = name_var.get().strip()
@@ -221,8 +232,13 @@ class MainApp(tb.Window):
         pwd_entry.pack(pady=5, padx=20, fill="x")
         pwd_entry.associated_var = pwd_var
         
-        # FIX: Updated to Button-1 with delay to mirror the Settings behavior
-        pwd_entry.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var)))
+        # FIX: Force cursor into field on click
+        def trigger_pwd(e):
+            pwd_entry.focus_set()
+            pwd_entry.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var))
+
+        pwd_entry.bind("<Button-1>", trigger_pwd)
 
         def check_password():
             if pwd_var.get() == "TUNITECH":
@@ -298,9 +314,19 @@ class MainApp(tb.Window):
             et = tb.Entry(edit_win, textvariable=t_var); et.pack(pady=5)
             et.associated_var = t_var
 
-            # FIX: Updated these to Button-1 with delay for reliable triggering
-            en.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(en, et, n_var)))
-            et.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(et, None, t_var)))
+            # FIX: Force cursor for Edit fields
+            def trigger_en(e):
+                en.focus_set()
+                en.icursor(tk.END)
+                self.after(100, lambda: self.show_virtual_keyboard(en, et, n_var))
+
+            def trigger_et(e):
+                et.focus_set()
+                et.icursor(tk.END)
+                self.after(100, lambda: self.show_virtual_keyboard(et, None, t_var))
+
+            en.bind("<Button-1>", trigger_en)
+            et.bind("<Button-1>", trigger_et)
 
             def save_edit():
                 ref_data["name"] = n_var.get()
