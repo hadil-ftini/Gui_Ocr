@@ -86,18 +86,22 @@ class MainApp(tb.Window):
         self.camera_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.rect_start = None
 
+    # ─── VIRTUAL KEYBOARD SYSTEM ───
     def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
-        if self._closing_keyboard: return
+        if self._closing_keyboard: 
+            return
+            
         self.current_kb_entry = entry
         self.current_kb_var = kb_var
         
         if not self.keyboard_win or not self.keyboard_win.winfo_exists():
             self.keyboard_win = tb.Toplevel(self)
             self.keyboard_win.title("Keyboard")
-            self.keyboard_win.geometry("650x250+300+400")
+            self.keyboard_win.geometry("650x280+300+400")
             self.keyboard_win.attributes("-topmost", True)
             self.keyboard_win.resizable(False, False)
             self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
+            self.keyboard_win.transient(self) # Keep keyboard on top of main app
         
         self.keyboard_win.lift()
         self._refresh_kb_layout(next_widget)
@@ -140,23 +144,29 @@ class MainApp(tb.Window):
         if isinstance(next_widget, (tb.Entry, tk.Entry)):
             next_widget.select_range(0, tk.END)
             next_widget.icursor(tk.END)
+        # Re-trigger keyboard for the next field
         self.show_virtual_keyboard(next_widget, kb_var=getattr(next_widget, 'associated_var', None))
 
     def _kb_insert_char(self, char):
-        if self.current_kb_var: self.current_kb_var.set(self.current_kb_var.get() + char)
+        if self.current_kb_var: 
+            self.current_kb_var.set(self.current_kb_var.get() + char)
 
     def _kb_backspace(self):
-        if self.current_kb_var: self.current_kb_var.set(self.current_kb_var.get()[:-1])
+        if self.current_kb_var: 
+            self.current_kb_var.set(self.current_kb_var.get()[:-1])
 
-    def _kb_space(self): self._kb_insert_char(" ")
+    def _kb_space(self): 
+        self._kb_insert_char(" ")
 
     def _close_keyboard(self):
         self._closing_keyboard = True
         if self.keyboard_win and self.keyboard_win.winfo_exists():
             self.keyboard_win.destroy()
             self.keyboard_win = None
-        self.after(200, lambda: setattr(self, "_closing_keyboard", False))
+        # Cooldown prevents the keyboard from immediately popping back up due to focus lag
+        self.after(300, lambda: setattr(self, "_closing_keyboard", False))
 
+    # ─── APP FUNCTIONALITY ───
     def open_settings(self):
         win = tb.Toplevel(self)
         win.title("Reference Setup")
@@ -164,6 +174,7 @@ class MainApp(tb.Window):
         win.resizable(False, False)
         win.attributes("-topmost", True)
         win.lift()
+        # Clean up keyboard if settings window is closed
         win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
         
         container = tb.Frame(win, padding=25)
@@ -181,8 +192,9 @@ class MainApp(tb.Window):
         e2.associated_var = text_var
         e2.pack(fill="x", pady=(5, 20))
 
-        e1.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(e1, e2, name_var))
-        e2.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(e2, None, text_var))
+        # Using Button-1 (Click) is more stable for triggering virtual keyboards on touchscreens
+        e1.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var)))
+        e2.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var)))
 
         def confirm():
             name = name_var.get().strip()
@@ -190,6 +202,7 @@ class MainApp(tb.Window):
             if name and expected:
                 self.pending_ref = {"name": name, "expected_text": expected, "roi": None}
                 self.adding_new_ref = True
+                self._close_keyboard()
                 win.destroy()
                 self.result_label.configure(text=f"Please draw the ROI for: {name}", bootstyle="warning")
             else:
@@ -210,7 +223,7 @@ class MainApp(tb.Window):
         pwd_entry = tb.Entry(pwd_win, textvariable=pwd_var, show="*")
         pwd_entry.pack(pady=5, padx=20, fill="x")
         pwd_entry.associated_var = pwd_var
-        pwd_entry.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(pwd_entry, None, pwd_var))
+        pwd_entry.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(pwd_entry, None, pwd_var)))
 
         def check_password():
             if pwd_var.get() == "TUNITECH":
@@ -256,7 +269,7 @@ class MainApp(tb.Window):
                 refresh_tree()
 
         def delete_all():
-            if tb.dialogs.Messagebox.yesno("Delete EVERYTHING?", "Warning: This cannot be undone!", bootstyle="danger", parent=win):
+            if tb.dialogs.Messagebox.yesno("Delete EVERYTHING?", "Warning!", bootstyle="danger", parent=win):
                 self.references = []
                 self.save_references()
                 self.update_ref_combo()
@@ -273,9 +286,8 @@ class MainApp(tb.Window):
             
             edit_win = tb.Toplevel(win)
             edit_win.title("Edit Reference")
-            edit_win.geometry("400x300")
+            edit_win.geometry("400x350")
             edit_win.attributes("-topmost", True)
-            edit_win.lift()
             
             tb.Label(edit_win, text="Name:").pack(pady=5)
             n_var = tk.StringVar(value=ref_data["name"])
@@ -287,8 +299,8 @@ class MainApp(tb.Window):
             et = tb.Entry(edit_win, textvariable=t_var); et.pack(pady=5)
             et.associated_var = t_var
 
-            en.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(en, et, n_var))
-            et.bind("<FocusIn>", lambda e: self.show_virtual_keyboard(et, None, t_var))
+            en.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(en, et, n_var)))
+            et.bind("<Button-1>", lambda e: self.after(100, lambda: self.show_virtual_keyboard(et, None, t_var)))
 
             def save_edit():
                 ref_data["name"] = n_var.get()
@@ -305,6 +317,7 @@ class MainApp(tb.Window):
         tb.Button(btn_frame, text="🔥 Delete All", bootstyle="danger", command=delete_all).pack(side="left", padx=5, expand=True, fill="x")
         tb.Button(btn_frame, text="✏ Edit", bootstyle="warning", command=edit_item).pack(side="left", padx=5, expand=True, fill="x")
 
+    # ─── MOUSE / ROI EVENTS ───
     def on_mouse_up(self, event):
         if not self.rect_start: return
         x1, y1 = self.rect_start
@@ -327,18 +340,10 @@ class MainApp(tb.Window):
                 self.save_references()
                 self.update_ref_combo()
                 
-                # Show Success
-                tb.dialogs.Messagebox.show_info(
-                    title="Success",
-                    message=f"Reference '{self.pending_ref['name']}' saved successfully!",
-                    parent=self
-                )
-                
-                # CLEANUP: Clear ROI lines immediately after saving
+                tb.dialogs.Messagebox.show_info(title="Success", message=f"Reference saved!", parent=self)
                 self.camera.clear_roi() 
-                
-                self.result_label.configure(text="Reference Saved. Select from list to use.", bootstyle="success")
-                self.ref_var.set("") # Clear selection so user has to pick it to see ROI
+                self.result_label.configure(text="Reference Saved.", bootstyle="success")
+                self.ref_var.set("") 
 
             self.adding_new_ref = False; self.pending_ref = None
         else:
