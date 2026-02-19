@@ -1,0 +1,262 @@
+2026-02-17 21:26:00,516 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:502
+2026-02-17 21:26:06,967 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:26:06,967 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:26:10,049 [ERROR] pymodbus.logging: Repeating....
+2026-02-17 21:26:10,051 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:26:13,116 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:26:13,116 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:26:16,203 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:26:16,203 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:26:19,259 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:26:19,259 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:26:22,413 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:26:22,413 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:26:22,423 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-17 21:27:16,452 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:502
+2026-02-17 21:27:22,031 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:27:22,031 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:27:25,106 [ERROR] pymodbus.logging: Repeating....
+2026-02-17 21:27:25,106 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:27:28,193 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:27:28,194 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:27:31,264 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:27:31,264 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:27:34,367 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:27:34,373 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:27:34,430 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-17 21:28:15,962 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:502
+2026-02-17 21:28:27,663 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:28:27,663 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:28:30,799 [ERROR] pymodbus.logging: Repeating....
+2026-02-17 21:28:30,799 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:28:33,884 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:28:33,884 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:28:36,943 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:28:36,945 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:28:40,117 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:28:40,117 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:28:40,156 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-17 21:54:10,369 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:502
+2026-02-17 21:54:19,889 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:19,892 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:22,986 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:22,993 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:26,089 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:26,092 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:29,162 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:29,164 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:32,223 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:32,225 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:35,278 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:35,278 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:38,348 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:38,350 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:41,424 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:41,426 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:44,508 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:44,510 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:47,570 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:47,572 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:50,681 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:50,683 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:53,850 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:53,852 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:54:56,968 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:54:56,972 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:00,048 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:00,050 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:03,119 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:03,119 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:06,233 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:06,233 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:09,361 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:09,363 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:12,414 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:12,418 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:15,481 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:15,481 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:18,579 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:18,581 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:21,641 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:21,643 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:24,704 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:24,704 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:27,765 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:27,767 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:30,856 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:30,858 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:33,921 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:33,923 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:36,989 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:36,993 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:40,167 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:40,171 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:43,240 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:43,242 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:46,307 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:46,309 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:49,389 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:49,391 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:52,456 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:52,460 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:55,508 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:55,508 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:55:58,579 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:55:58,586 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:01,647 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:01,648 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:04,712 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:04,714 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:07,770 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:07,772 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:10,836 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:10,837 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:13,899 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:13,900 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:16,963 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:16,965 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:20,034 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:20,034 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:23,137 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:23,141 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:26,217 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:26,219 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:29,287 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:29,353 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:32,424 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:32,430 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:35,496 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:35,496 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:38,557 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:38,575 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:41,629 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:41,630 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:44,741 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:44,776 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:47,936 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:47,936 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:51,003 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:51,011 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:54,085 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:54,113 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:56:57,183 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:56:57,185 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:00,247 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:00,251 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:03,312 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:03,314 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:06,388 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:06,391 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:09,471 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:09,471 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:12,544 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:12,546 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:15,612 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:15,614 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:18,674 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:18,674 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:21,734 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:21,738 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:24,804 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:24,804 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:27,871 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:27,871 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:30,923 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 502) failed: timed out
+2026-02-17 21:57:30,924 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:57:30,926 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-17 21:58:27,462 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:3000
+2026-02-17 21:58:55,964 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 3000) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 21:58:55,964 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:59:17,062 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 3000) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 21:59:17,064 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:59:38,172 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 3000) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 21:59:38,174 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 21:59:59,316 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 3000) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 21:59:59,340 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 22:00:20,452 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 3000) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 22:00:20,458 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 22:00:20,477 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-17 22:02:21,677 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:3000
+2026-02-17 22:02:49,736 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 3000) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 22:02:49,738 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 22:03:10,846 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 3000) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 22:03:10,849 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 22:03:32,026 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-17 22:03:57,665 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-17 22:04:25,541 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 22:04:25,541 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 22:04:46,637 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 22:04:46,673 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 22:05:27,951 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 22:05:28,054 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-17 22:05:50,988 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-17 22:05:50,998 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:34:01,281 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 09:34:29,115 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:34:29,115 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:34:50,253 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:34:50,253 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:35:11,345 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:35:11,347 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:35:32,434 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:35:32,434 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:35:53,520 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:35:53,520 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:36:25,440 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 09:36:52,236 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:36:52,238 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:37:13,333 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:37:13,333 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:37:13,334 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-18 09:52:55,325 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 09:53:43,727 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 09:54:06,244 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 09:54:06,298 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 09:54:07,130 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-18 09:57:03,667 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 09:57:15,013 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-18 10:05:06,434 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 10:06:01,036 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 10:06:24,191 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:06:24,195 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:06:46,258 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:06:46,261 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:07:08,318 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:07:08,359 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:07:30,381 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:07:30,387 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:07:52,402 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:07:52,421 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:08:14,480 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:08:14,482 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:08:36,546 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:08:36,570 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:08:58,606 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:08:58,633 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:09:20,679 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:09:20,692 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:09:42,737 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:09:42,738 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:10:04,777 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:10:04,779 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:10:26,817 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:10:26,829 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:10:48,875 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:10:48,876 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:11:10,913 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:11:10,977 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:11:33,043 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:11:33,043 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:11:55,107 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:11:55,107 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:12:17,145 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-18 10:12:17,150 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-18 10:12:29,642 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-18 10:14:00,878 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 10:14:13,384 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-18 10:31:53,485 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-18 10:32:04,838 [INFO] ModbusManager: Disconnected from Modbus PLC
+2026-02-19 21:32:00,124 [INFO] ModbusManager: ModbusManager initialized for 192.168.0.50:5502
+2026-02-19 21:32:22,088 [ERROR] pymodbus.logging: Connection to (192.168.0.50, 5502) failed: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+2026-02-19 21:32:22,106 [ERROR] ModbusManager: Failed to connect to Modbus PLC.
+2026-02-19 21:32:22,738 [INFO] ModbusManager: Disconnected from Modbus PLC

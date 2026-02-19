@@ -28,5 +28,25 @@
             134,
             185
         ]
+    },
+    {
+        "name": "yyyyyyy",
+        "expected_text": "uuuuuu",
+        "roi": [
+            278,
+            197,
+            103,
+            35
+        ]
+    },
+    {
+        "name": "test",
+        "expected_text": "test",
+        "roi": [
+            203,
+            194,
+            179,
+            33
+        ]
     }
 ]
