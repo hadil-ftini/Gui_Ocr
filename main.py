@@ -444,22 +444,58 @@ class MainApp(tb.Window):
             self.update_result_ui(f"Active: {ref_data['name']}", "info")
             self.modbus_manager.write_result(RESULT_IDLE)
 
-    def on_mouse_down(self, event): self.rect_start = (event.x, event.y)
+    def on_mouse_down(self, event):
+        # 1. Capture the starting point in UI pixels
+        # 2. Convert UI pixels to actual Camera pixels using the scale factors
+        scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
+        scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
+        
+        # This is the coordinate on the actual high-res camera frame
+        self.rect_start = (int(event.x * scale_x), int(event.y * scale_y))
+        self.adding_new_ref = True
+
     def on_mouse_drag(self, event):
         if self.rect_start:
-            x1, y1 = self.rect_start
-            x2, y2 = event.x, event.y
+            # Get current scales
+            scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
+            scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
             
-            # Use separate scales for X and Y to map UI coordinates back to original frame coordinates
-            scale_x = 1 / getattr(self.camera, 'display_scale_x', self.camera.display_scale)
-            scale_y = 1 / getattr(self.camera, 'display_scale_y', self.camera.display_scale)
+            # Map the current mouse position (event.x, event.y) to frame space
+            start_x, start_y = self.rect_start
+            curr_x, curr_y = int(event.x * scale_x), int(event.y * scale_y)
             
-            # Map coordinates to original frame space
-            rx, ry = int(x1 * scale_x), int(y1 * scale_y)
-            rx2, ry2 = int(x2 * scale_x), int(y2 * scale_y)
+            # Calculate width and height in frame coordinates
+            width = curr_x - start_x
+            height = curr_y - start_y
             
-            # Pass correct start and dimensions to camera for drawing
-            self.camera.set_roi_temp(rx, ry, rx2 - rx, ry2 - ry)
+            # Update the temporary ROI in the camera module for the live preview
+            self.camera.set_roi_temp(start_x, start_y, width, height)
+
+    def on_mouse_up(self, event):
+        if self.rect_start:
+            scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
+            scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
+            
+            start_x, start_y = self.rect_start
+            end_x, end_y = int(event.x * scale_x), int(event.y * scale_y)
+            
+            # Calculate the final ROI (ensure width/height are positive)
+            final_x = min(start_x, end_x)
+            final_y = min(start_y, end_y)
+            final_w = abs(end_x - start_x)
+            final_h = abs(end_y - start_y)
+
+            if final_w > 5 and final_h > 5:
+                # Apply the final ROI to the camera
+                self.camera.set_roi(final_x, final_y, final_w, final_h)
+                self.pending_roi = (final_x, final_y, final_w, final_h)
+                
+                # Clear the temporary drawing and trigger the name prompt
+                self.camera.temp_roi = None
+                self.prompt_for_reference_name()
+            
+            self.rect_start = None
+            self.adding_new_ref = False
 
     def change_theme(self, name): tm.set_theme(self, name)
 
