@@ -100,7 +100,18 @@ class MainApp(tb.Window):
             self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
         except:
             tb.Label(self.header, text="TUNITECH", font=("Helvetica", 22, "bold")).grid(row=0, column=0, padx=15, pady=8, sticky="w")
-       
+        try:
+            logo2_img = Image.open("logo2.png")
+            aspect_ratio2 = logo2_img.width / logo2_img.height
+            new_height2 = 50 
+            new_width2 = int(new_height2 * aspect_ratio2)
+            logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
+            self.logo2_tk = ImageTk.PhotoImage(logo2_img)
+            self.logo2_label = tb.Label(self.header, image=self.logo2_tk)
+            # Row 0, Column 4 puts it to the right of the Theme button
+            self.logo2_label.grid(row=0, column=4, padx=15, pady=8, sticky="e")
+        except Exception as e:
+            print(f"Logo2 not found: {e}")
         # Theme button on the far right
         self.theme_mb = tb.Menubutton(self.header, text="Themes", bootstyle="primary")
         self.theme_mb.grid(row=0, column=3, padx=15, pady=10, sticky="e")
@@ -338,22 +349,63 @@ class MainApp(tb.Window):
 
     # ─── ARCHIVE & PASSWORD WINDOW ───
     def open_archive(self):
-        # This method can remain as is
-        pass
+        # Create the archive window
+        archive_win = tb.Toplevel(self)
+        archive_win.title("Reference Archive")
+        archive_win.geometry("800x500")
+        
+        # Header
+        lbl = tb.Label(archive_win, text="Saved References & Logs", font=("Helvetica", 16, "bold"), bootstyle="primary")
+        lbl.pack(pady=10)
 
+        # Create a table (Treeview) to display the references
+        columns = ("name", "expected_text", "roi")
+        tree = tb.Treeview(archive_win, columns=columns, show="headings", bootstyle="info")
+        
+        # Define headings
+        tree.heading("name", text="Reference Name")
+        tree.heading("expected_text", text="Expected OCR Text")
+        tree.heading("roi", text="ROI Coordinates")
+        
+        # Set column widths
+        tree.column("name", width=150)
+        tree.column("expected_text", width=250)
+        tree.column("roi", width=200)
+
+        # Populate the table from your self.references list
+        for ref in self.references:
+            tree.insert("", tk.END, values=(ref["name"], ref["expected_text"], str(ref["roi"])))
+
+        tree.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Add a close button
+        close_btn = tb.Button(archive_win, text="Close", bootstyle="secondary", command=archive_win.destroy)
+        close_btn.pack(pady=10)
     # ─── MOUSE / ROI EVENTS ───
     def on_mouse_up(self, event):
         if not self.rect_start: return
         x1, y1 = self.rect_start
         x2, y2 = event.x, event.y
-        scale = 1 / self.camera.display_scale
-        rx, ry = int(min(x1, x2) * scale), int(min(y1, y2) * scale)
-        rw, rh = int(abs(x2 - x1) * scale), int(abs(y2 - y1) * scale)
+        
+        # Calculate bounding box in UI coordinates first
+        ui_x, ui_y = min(x1, x2), min(y1, y2)
+        ui_w, ui_h = abs(x2 - x1), abs(y2 - y1)
+        
+        # Use separate scales for X and Y to map UI coordinates back to original frame coordinates
+        scale_x = 1 / getattr(self.camera, 'display_scale_x', self.camera.display_scale)
+        scale_y = 1 / getattr(self.camera, 'display_scale_y', self.camera.display_scale)
+        
+        # Map to frame coordinates
+        rx, ry = int(ui_x * scale_x), int(ui_y * scale_y)
+        rw, rh = int(ui_w * scale_x), int(ui_h * scale_y)
+        
         self.rect_start = None
         self.camera.temp_roi = None
-        if rw < 10 or rh < 10:
+        
+        if rw < 5 or rh < 5:
             if self.adding_new_ref: self.update_result_ui("❌ ROI too small!", "danger")
             return
+            
         if self.adding_new_ref and self.pending_ref:
             if any(r['name'] == self.pending_ref['name'] for r in self.references):
                 self.update_result_ui("❌ Reference name exists!", "danger")
@@ -396,7 +448,18 @@ class MainApp(tb.Window):
     def on_mouse_drag(self, event):
         if self.rect_start:
             x1, y1 = self.rect_start
-            self.camera.set_roi_temp(x1, y1, event.x - x1, event.y - y1)
+            x2, y2 = event.x, event.y
+            
+            # Use separate scales for X and Y to map UI coordinates back to original frame coordinates
+            scale_x = 1 / getattr(self.camera, 'display_scale_x', self.camera.display_scale)
+            scale_y = 1 / getattr(self.camera, 'display_scale_y', self.camera.display_scale)
+            
+            # Map coordinates to original frame space
+            rx, ry = int(x1 * scale_x), int(y1 * scale_y)
+            rx2, ry2 = int(x2 * scale_x), int(y2 * scale_y)
+            
+            # Pass correct start and dimensions to camera for drawing
+            self.camera.set_roi_temp(rx, ry, rx2 - rx, ry2 - ry)
 
     def change_theme(self, name): tm.set_theme(self, name)
 
@@ -463,7 +526,23 @@ class MainApp(tb.Window):
             if not camera_started:
                 self.camera_queue.put({"type": "status", "text": "Camera failed to start, retrying...", "bootstyle": "danger"})
                 time.sleep(3) # Wait before retrying camera
-        
+        frame_count = 0
+        while self.running:
+            # Run OCR only every 15 frames (approx. every 0.5 seconds)
+            # This drastically reduces CPU load
+            should_i_ocr = (frame_count % 15 == 0)
+            
+            img_tk, is_match = self.camera.get_frame(
+                self.camera_width, 
+                self.camera_height, 
+                run_ocr=should_i_ocr
+            )
+            
+            if img_tk:
+                self.camera_queue.put({"type": "frame", "img_tk": img_tk, "is_match": is_match})
+            
+            frame_count += 1
+            time.sleep(0.01)
         while self.running:
             # Pass current camera_label dimensions to get_frame
             img_tk, is_match = self.camera.get_frame(self.camera_width, self.camera_height)

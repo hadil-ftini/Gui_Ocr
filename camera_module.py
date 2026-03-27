@@ -12,6 +12,8 @@ class CameraApp:
         self.cap = None
         self.is_running = False
         self.display_scale = 1.0
+        self.display_scale_x = 1.0
+        self.display_scale_y = 1.0
         self.current_roi = None
         self.expected_text = ""
         self.temp_roi = None
@@ -20,7 +22,7 @@ class CameraApp:
         self.is_match = False
 
     def start_camera(self, camera_index=1):
-        self.cap = cv2.VideoCapture(1)
+        self.cap = cv2.VideoCapture(0)
         self.is_running = self.cap.isOpened()
         return self.is_running
 
@@ -29,6 +31,14 @@ class CameraApp:
             self.cap.release()
             self.cap = None
         self.is_running = False
+
+    def _clamp_roi(self, x, y, w, h, frame_w, frame_h):
+        """Ensures ROI is within frame boundaries."""
+        nx = max(0, min(x, frame_w - 1))
+        ny = max(0, min(y, frame_h - 1))
+        nw = max(1, min(w, frame_w - nx))
+        nh = max(1, min(h, frame_h - ny))
+        return int(nx), int(ny), int(nw), int(nh)
 
     def set_roi(self, x, y, w, h):
         if w <= 0 or h <= 0: return False
@@ -50,24 +60,29 @@ class CameraApp:
 
     def _process_frame(self, frame):
         """Internal method to run OCR and comparison if ROI and expected_text are set."""
-        if self.current_roi is None or not self.expected_text:
+        if not self.expected_text:
             self.is_match = False
             self.last_detected_text = ""
             return
 
-        x, y, w, h = self.current_roi
-        
-        # Ensure ROI is within frame bounds
         h_frame, w_frame, _ = frame.shape
-        if x + w > w_frame or y + h > h_frame:
-            self.is_match = False
-            self.last_detected_text = "ROI out of bounds"
-            return
-
+        
+        # If no ROI is specified, use the full frame
+        if self.current_roi is None:
+            x, y, w, h = 0, 0, w_frame, h_frame
+        else:
+            x, y, w, h = self._clamp_roi(*self.current_roi, w_frame, h_frame)
+        
         # Crop and process image for OCR
-        roi_frame = frame[y:y+h, x:x+w]
-        gray = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
-        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        try:
+            roi_frame = frame[y:y+h, x:x+w]
+            if roi_frame.size == 0: raise ValueError("Empty ROI")
+            gray = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
+            thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        except Exception as e:
+            self.is_match = False
+            self.last_detected_text = "ROI Error"
+            return
 
         # OCR
         try:
@@ -85,13 +100,14 @@ class CameraApp:
         else:
             self.is_match = False
 
-    def get_frame(self, target_width=None, target_height=None): # ADD target_width, target_height parameters
+    def get_frame(self, target_width=None, target_height=None, run_ocr=False): 
         if not self.is_running or self.cap is None: return None, None
         ret, frame = self.cap.read()
         if not ret: return None, None
         
         # Run the core logic
-        self._process_frame(frame)
+        if run_ocr:
+            self._process_frame(frame)
 
         # --- DRAWING LOGIC ---
         roi_color = (0, 255, 0) if self.is_match else (0, 0, 255)
@@ -114,23 +130,23 @@ class CameraApp:
         if target_width and target_height and target_width > 0 and target_height > 0:
             original_width, original_height = pil.size
             
-            # Calculate ratios
-            width_ratio = target_width / original_width
-            height_ratio = target_height / original_height
-            
-            # Use the smaller ratio to fit within the target dimensions while maintaining aspect ratio
-            scale_ratio = min(width_ratio, height_ratio)
-            
-            new_width = int(original_width * scale_ratio)
-            new_height = int(original_height * scale_ratio)
+            # Stretch to fill the full target rectangle as requested
+            new_width = int(target_width)
+            new_height = int(target_height)
             
             # Ensure at least 1 pixel dimension
             new_width = max(1, new_width)
             new_height = max(1, new_height)
 
             pil = pil.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            self.display_scale = scale_ratio # Store the actual scale used
+            
+            # Store scale per axis for mapping UI events (mouse clicks) back to frame coordinates
+            self.display_scale_x = new_width / original_width
+            self.display_scale_y = new_height / original_height
+            self.display_scale = self.display_scale_x # Keep for backward compatibility
         else:
+            self.display_scale_x = 1.0
+            self.display_scale_y = 1.0
             self.display_scale = 1.0 # If no target provided, no scaling happens
             
         return ImageTk.PhotoImage(pil), self.is_match
