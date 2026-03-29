@@ -32,6 +32,7 @@ class MainApp(tb.Window):
         self.poll_interval = 1  # Poll PLC every 1 second
         self.last_plc_ref = ""
         self._modbus_was_connected = False # Track connection state
+        self.modbus_enabled = True  # Flag to enable/disable Modbus communication
 
         # Virtual Keyboard State
         self.keyboard_win = None
@@ -48,6 +49,7 @@ class MainApp(tb.Window):
 
         # Threading setup
         self.modbus_queue = queue.Queue()
+        self.modbus_write_queue = queue.Queue()  # Separate queue for write operations (processed by worker thread)
         self.camera_queue = queue.Queue()
         self.modbus_thread = None
         self.camera_thread = None
@@ -108,13 +110,17 @@ class MainApp(tb.Window):
             logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
             self.logo2_tk = ImageTk.PhotoImage(logo2_img)
             self.logo2_label = tb.Label(self.header, image=self.logo2_tk)
-            # Row 0, Column 4 puts it to the right of the Theme button
-            self.logo2_label.grid(row=0, column=4, padx=15, pady=8, sticky="e")
+            # Row 0, Column 5 puts it to the right of the Theme button
+            self.logo2_label.grid(row=0, column=5, padx=15, pady=8, sticky="e")
         except Exception as e:
             print(f"Logo2 not found: {e}")
+        # Modbus Toggle Button
+        self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus)
+        self.modbus_btn.grid(row=0, column=3, padx=15, pady=10, sticky="e")
+        
         # Theme button on the far right
         self.theme_mb = tb.Menubutton(self.header, text="Themes", bootstyle="primary")
-        self.theme_mb.grid(row=0, column=3, padx=15, pady=10, sticky="e")
+        self.theme_mb.grid(row=0, column=4, padx=15, pady=10, sticky="e")
         self.theme_menu = tb.Menu(self.theme_mb)
         for theme in tm.get_available_themes():
             self.theme_menu.add_command(label=theme, command=lambda t=theme: self.change_theme(t))
@@ -442,7 +448,8 @@ class MainApp(tb.Window):
             self.camera.set_roi(*ref_data["roi"])
             self.camera.expected_text = ref_data["expected_text"]
             self.update_result_ui(f"Active: {ref_data['name']}", "info")
-            self.modbus_manager.write_result(RESULT_IDLE)
+            # Queue Modbus write to worker thread (never blocks main thread)
+            self.modbus_write_queue.put({"type": "write_result", "value": RESULT_IDLE})
 
     def on_mouse_down(self, event):
         # 1. Capture the starting point in UI pixels
@@ -499,11 +506,23 @@ class MainApp(tb.Window):
 
     def change_theme(self, name): tm.set_theme(self, name)
 
+    def toggle_modbus(self):
+        """Toggle Modbus communication on/off while keeping other components running."""
+        self.modbus_enabled = not self.modbus_enabled
+        if self.modbus_enabled:
+            self.modbus_btn.configure(text="🔌 Modbus: ON", bootstyle="success")
+            self.update_result_ui("Modbus reconnecting...", "info")
+        else:
+            self.modbus_btn.configure(text="🔌 Modbus: OFF", bootstyle="danger")
+            self.modbus_manager.disconnect()
+            self.update_result_ui("Modbus disconnected", "warning")
+
     def clear_zone(self):
         self.camera.clear_roi()
         self.ref_var.set("")
         self.update_result_ui("Zone Cleared", "warning")
-        self.modbus_manager.write_result(RESULT_IDLE)
+        # Queue Modbus write to worker thread (never blocks main thread)
+        self.modbus_write_queue.put({"type": "write_result", "value": RESULT_IDLE})
 
     def _start_background_tasks(self):
         """Starts the Modbus and Camera worker threads."""
@@ -516,6 +535,24 @@ class MainApp(tb.Window):
         """Worker thread for Modbus communication."""
         while self.running:
             try:
+                # Process any pending write operations first (highest priority)
+                try:
+                    while True:
+                        write_item = self.modbus_write_queue.get_nowait()
+                        if write_item["type"] == "write_result":
+                            if self.modbus_enabled and self.modbus_manager.connected:
+                                self.modbus_manager.write_result(write_item["value"])
+                        elif write_item["type"] == "acknowledge_start":
+                            if self.modbus_enabled and self.modbus_manager.connected:
+                                self.modbus_manager.acknowledge_start()
+                except queue.Empty:
+                    pass
+                
+                # Check if Modbus is disabled
+                if not self.modbus_enabled:
+                    time.sleep(0.5)
+                    continue
+                
                 # Attempt to connect if not already connected
                 if not self.modbus_manager.connected:
                     self.modbus_manager.connect()
@@ -578,12 +615,6 @@ class MainApp(tb.Window):
                 self.camera_queue.put({"type": "frame", "img_tk": img_tk, "is_match": is_match})
             
             frame_count += 1
-            time.sleep(0.01)
-        while self.running:
-            # Pass current camera_label dimensions to get_frame
-            img_tk, is_match = self.camera.get_frame(self.camera_width, self.camera_height)
-            if img_tk:
-                self.camera_queue.put({"type": "frame", "img_tk": img_tk, "is_match": is_match})
             time.sleep(0.01) # Keep camera feed smooth, but allow other tasks
 
     def update_gui_from_queues(self):
@@ -618,7 +649,7 @@ class MainApp(tb.Window):
         except queue.Empty:
             pass
 
-        self.after(30, self.update_gui_from_queues)
+        self.after(15, self.update_gui_from_queues)
 
     def _process_plc_inputs(self, plc_inputs):
         # This logic is adapted from the original poll_plc method
@@ -631,27 +662,27 @@ class MainApp(tb.Window):
                 self.on_ref_selected(None) 
             else:
                 self.update_result_ui(f"PLC Error: Ref '{self.last_plc_ref}' not found", "danger")
-                self.modbus_manager.write_result(RESULT_NOK)
+                self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
                 if plc_inputs.get('start_cycle'):
-                    self.modbus_manager.acknowledge_start()
+                    self.modbus_write_queue.put({"type": "acknowledge_start"})
         
         # Check for start cycle trigger
         if plc_inputs.get('start_cycle'):
             print("PLC triggered test start.")
             if not self.camera.current_roi or not self.camera.expected_text:
                 self.update_result_ui("FAIL: No Active Reference", "danger")
-                self.modbus_manager.write_result(RESULT_NOK)
+                self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
             else:
                 # Use the latest match status from the camera object
                 if self.camera.is_match:
                     self.update_result_ui("OK", "success")
-                    self.modbus_manager.write_result(RESULT_OK)
+                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_OK})
                 else:
                     self.update_result_ui("NOK", "danger")
-                    self.modbus_manager.write_result(RESULT_NOK)
+                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
             
             # Acknowledge that the cycle has been processed
-            self.modbus_manager.acknowledge_start()
+            self.modbus_write_queue.put({"type": "acknowledge_start"})
 
     def _on_main_window_configure(self, event):
         # Dynamically scale result_label font based on window height

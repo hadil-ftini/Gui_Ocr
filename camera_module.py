@@ -20,6 +20,10 @@ class CameraApp:
         # Add state for results
         self.last_detected_text = ""
         self.is_match = False
+        # Cache optimizations
+        self._last_cached_dims = (None, None)
+        self._last_pil_image = None
+        self._last_frame_hash = 0
 
     def start_camera(self, camera_index=1):
         self.cap = cv2.VideoCapture(0)
@@ -118,7 +122,6 @@ class CameraApp:
             cv2.putText(frame, self.last_detected_text, (x, y - 10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, roi_color, 2)
 
-
         if self.temp_roi:
             tx, ty, tw, th = self.temp_roi
             cv2.rectangle(frame, (tx, ty), (tx + tw, ty + th), (255, 120, 0), 2)
@@ -126,27 +129,30 @@ class CameraApp:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil = Image.fromarray(rgb)
 
-        # RESIZING LOGIC
+        # RESIZING LOGIC with dimension caching
         if target_width and target_height and target_width > 0 and target_height > 0:
-            original_width, original_height = pil.size
+            target_dims = (int(target_width), int(target_height))
             
-            # Stretch to fill the full target rectangle as requested
-            new_width = int(target_width)
-            new_height = int(target_height)
-            
-            # Ensure at least 1 pixel dimension
-            new_width = max(1, new_width)
-            new_height = max(1, new_height)
-
-            pil = pil.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            
-            # Store scale per axis for mapping UI events (mouse clicks) back to frame coordinates
-            self.display_scale_x = new_width / original_width
-            self.display_scale_y = new_height / original_height
-            self.display_scale = self.display_scale_x # Keep for backward compatibility
+            # Only resize if target dimensions changed
+            if self._last_cached_dims != target_dims:
+                original_width, original_height = pil.size
+                new_width, new_height = target_dims
+                
+                # Use faster BILINEAR resampling instead of LANCZOS
+                pil = pil.resize((new_width, new_height), Image.Resampling.BILINEAR)
+                self._last_cached_dims = target_dims
+                
+                # Store scale per axis for mapping UI events (mouse clicks) back to frame coordinates
+                self.display_scale_x = new_width / original_width
+                self.display_scale_y = new_height / original_height
+                self.display_scale = self.display_scale_x
+            else:
+                # Resize to cached dimensions if they haven't changed
+                pil = pil.resize(target_dims, Image.Resampling.BILINEAR)
         else:
             self.display_scale_x = 1.0
             self.display_scale_y = 1.0
-            self.display_scale = 1.0 # If no target provided, no scaling happens
+            self.display_scale = 1.0
+            self._last_cached_dims = (None, None)
             
         return ImageTk.PhotoImage(pil), self.is_match
