@@ -1,25 +1,5 @@
 [
     {
-        "name": "E",
-        "expected_text": "0",
-        "roi": [
-            143,
-            199,
-            204,
-            181
-        ]
-    },
-    {
-        "name": "A",
-        "expected_text": "L",
-        "roi": [
-            90,
-            117,
-            202,
-            180
-        ]
-    },
-    {
         "name": "4",
         "expected_text": "0",
         "roi": [
@@ -27,96 +7,32 @@
             166,
             134,
             185
-        ]
+        ],
+        "ok_count": 0,
+        "nok_count": 0
     },
     {
-        "name": "yyyyyyy",
-        "expected_text": "uuuuuu",
+        "name": "hqsd7",
+        "expected_text": "de3",
         "roi": [
-            278,
-            197,
-            103,
-            35
-        ]
-    },
-    {
-        "name": "test",
-        "expected_text": "test",
-        "roi": [
-            203,
-            194,
-            179,
-            33
-        ]
-    },
-    {
-        "name": "he",
-        "expected_text": "55",
-        "roi": [
-            222,
-            163,
-            14,
-            27
-        ]
-    },
-    {
-        "name": "r4",
-        "expected_text": "hh",
-        "roi": [
-            174,
-            181,
-            154,
-            165
-        ]
-    },
-    {
-        "name": "hhh",
-        "expected_text": "444",
-        "roi": [
-            76,
-            172,
-            183,
-            156
-        ]
-    },
-    {
-        "name": "rrr",
-        "expected_text": "hhh",
-        "roi": [
-            218,
-            134,
-            230,
-            130
-        ]
-    },
-    {
-        "name": "hhhh",
-        "expected_text": "44444",
-        "roi": [
-            284,
-            76,
-            271,
-            94
-        ]
-    },
-    {
-        "name": "chhh",
-        "expected_text": "111",
-        "roi": [
-            425,
-            21,
-            105,
-            219
-        ]
+            70,
+            225,
+            187,
+            198
+        ],
+        "ok_count": 0,
+        "nok_count": 4
     },
     {
         "name": "hadil",
-        "expected_text": "f2",
+        "expected_text": "r4",
         "roi": [
-            526,
-            131,
-            93,
-            307
-        ]
+            105,
+            75,
+            248,
+            294
+        ],
+        "ok_count": 0,
+        "nok_count": 1
     }
 ]

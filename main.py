@@ -24,6 +24,11 @@ class MainApp(tb.Window):
         self.references = self.load_references()
         self.adding_new_ref = False
         self.pending_ref = None
+        self.selected_reference_name = None
+        self.ok_count = 0
+        self.nok_count = 0
+        self.ok_counter_var = tk.IntVar(value=0)
+        self.nok_counter_var = tk.IntVar(value=0)
 
         # -- Modbus Client Setup --
         # IMPORTANT: Set the correct IP address for your PLC here
@@ -40,16 +45,14 @@ class MainApp(tb.Window):
         self.current_kb_var = None
         self.current_next_widget = None
         self._closing_keyboard = False
-        
-        # Test OCR state
-        self.testing_ocr = False
-        
+
         self.setup_ui()
        
         self.camera = cam.CameraApp()
         self.camera_width = 1 # Initialize with dummy values
         self.camera_height = 1 # Initialize with dummy values
         self._roi_dragging = False
+        self.main_camera_display = True
 
         # Threading setup
         self.modbus_queue = queue.Queue()
@@ -83,6 +86,120 @@ class MainApp(tb.Window):
         """Updates only the UI result label. Does not send to PLC."""
         self.result_label.configure(text=text, bootstyle=bootstyle)
 
+    def update_ocr_text(self, detected_text):
+        pass
+
+    def _preview_to_frame_roi(self, roi, preview_size):
+        if not roi or self.camera.last_frame is None:
+            return None
+        frame_h, frame_w = self.camera.last_frame.shape[:2]
+        preview_w, preview_h = preview_size
+        x, y, w, h = roi
+        sx = frame_w / preview_w
+        sy = frame_h / preview_h
+        return (int(x * sx), int(y * sy), int(w * sx), int(h * sy))
+
+    def _frame_to_preview_roi(self, roi, preview_size):
+        if not roi or self.camera.last_frame is None:
+            return None
+        frame_h, frame_w = self.camera.last_frame.shape[:2]
+        preview_w, preview_h = preview_size
+        x, y, w, h = roi
+        sx = preview_w / frame_w
+        sy = preview_h / frame_h
+        return (int(x * sx), int(y * sy), int(w * sx), int(h * sy))
+
+    def _create_live_preview(self, parent, width=520, height=300, initial_roi=None):
+        preview_container = tb.Frame(parent)
+        preview_container.pack(padx=10, pady=10, fill="both", expand=True)
+        preview_label = tb.Label(preview_container, cursor="crosshair")
+        preview_label.pack(fill="both", expand=True)
+        preview_label.preview_size = (width, height)
+        scaled_roi = self._frame_to_preview_roi(initial_roi, preview_label.preview_size) if initial_roi else None
+        preview_label.local_roi = scaled_roi
+        preview_label.temp_roi = scaled_roi
+        preview_label.rect_start = None
+
+        def on_down(event):
+            preview_label.rect_start = (event.x, event.y)
+            preview_label.local_roi = None
+            preview_label.temp_roi = None
+
+        def on_drag(event):
+            if not preview_label.rect_start:
+                return
+            start_x, start_y = preview_label.rect_start
+            curr_x, curr_y = event.x, event.y
+            x0, y0 = min(start_x, curr_x), min(start_y, curr_y)
+            w0, h0 = abs(curr_x - start_x), abs(curr_y - start_y)
+            preview_label.temp_roi = (x0, y0, w0, h0)
+            self._refresh_preview(preview_label)
+
+        def on_up(event):
+            if not preview_label.rect_start:
+                return
+            if preview_label.temp_roi:
+                preview_label.local_roi = preview_label.temp_roi
+            preview_label.rect_start = None
+            self._refresh_preview(preview_label)
+
+        preview_label.bind("<Button-1>", on_down)
+        preview_label.bind("<B1-Motion>", on_drag)
+        preview_label.bind("<ButtonRelease-1>", on_up)
+
+        def refresh_loop():
+            self._refresh_preview(preview_label)
+            preview_label.after(50, refresh_loop)
+
+        refresh_loop()
+        return preview_label
+
+    def _refresh_preview(self, preview_label):
+        if not preview_label.winfo_exists():
+            return
+        overlay_roi = preview_label.temp_roi or preview_label.local_roi
+        if overlay_roi:
+            overlay_roi = self._preview_to_frame_roi(overlay_roi, preview_label.preview_size)
+        img, _ = self.camera.get_preview_image(
+            target_width=preview_label.preview_size[0],
+            target_height=preview_label.preview_size[1],
+            overlay_roi=overlay_roi,
+            overlay_color=(255, 255, 0),
+            show_text=False
+        )
+        if img:
+            preview_label.configure(image=img)
+            preview_label.image = img
+
+    def _update_reference_counters(self, match=None):
+        selected_ref = next((r for r in self.references if r['name'] == self.selected_reference_name), None)
+        if selected_ref is not None:
+            if match is True:
+                selected_ref['ok_count'] = selected_ref.get('ok_count', 0) + 1
+            elif match is False:
+                selected_ref['nok_count'] = selected_ref.get('nok_count', 0) + 1
+            self.ok_counter_var.set(selected_ref.get('ok_count', 0))
+            self.nok_counter_var.set(selected_ref.get('nok_count', 0))
+            if hasattr(self, 'ok_label'):
+                self.ok_label.configure(text=f"OK: {selected_ref.get('ok_count', 0)}")
+            if hasattr(self, 'nok_label'):
+                self.nok_label.configure(text=f"NOK: {selected_ref.get('nok_count', 0)}")
+            if hasattr(self, 'selected_ref_label'):
+                self.selected_ref_label.configure(text=f"Reference: {selected_ref['name']}")
+            self.save_references()
+        else:
+            self.ok_counter_var.set(0)
+            self.nok_counter_var.set(0)
+            if hasattr(self, 'ok_label'):
+                self.ok_label.configure(text="OK: 0")
+            if hasattr(self, 'nok_label'):
+                self.nok_label.configure(text="NOK: 0")
+            if hasattr(self, 'selected_ref_label'):
+                self.selected_ref_label.configure(text="Reference: None")
+
+    def _clear_ocr_results(self):
+        self.update_result_ui("Ready", "info")
+
     def setup_ui(self):
         # Configure root window grid
         self.grid_rowconfigure(0, weight=0) # Header
@@ -114,19 +231,19 @@ class MainApp(tb.Window):
             logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
             self.logo2_tk = ImageTk.PhotoImage(logo2_img)
             self.logo2_label = tb.Label(self.header, image=self.logo2_tk)
-            # Row 0, Column 5 puts it to the right of the Theme button
-            self.logo2_label.grid(row=0, column=5, padx=15, pady=8, sticky="e")
+            # Place the right logo after the Test button
+            self.logo2_label.grid(row=0, column=6, padx=15, pady=8, sticky="e")
         except Exception as e:
             print(f"Logo2 not found: {e}")
         # Modbus Toggle Button
         self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus)
         self.modbus_btn.grid(row=0, column=4, padx=15, pady=10, sticky="e")
-        
-        # Test OCR Button
-        self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr)
-        self.test_btn.grid(row=0, column=3, padx=15, pady=10, sticky="e")
 
-        # Reference combobox to the left of the test button
+        # Test OCR Button beside Modbus
+        self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr)
+        self.test_btn.grid(row=0, column=5, padx=15, pady=10, sticky="e")
+        
+        # Reference combobox to select active reference
         self.ref_var = tk.StringVar()
         self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
                                      values=[r['name'] for r in self.references],
@@ -142,7 +259,13 @@ class MainApp(tb.Window):
         sidebar_inner = tb.Frame(self.sidebar, bootstyle="dark")
         sidebar_inner.pack(padx=10, pady=10, fill="both", expand=True)
 
-        tb.Button(sidebar_inner, text="⚙ Reference Management", bootstyle="success", command=self.open_reference_management).pack(pady=10, fill="x")
+        tb.Button(sidebar_inner, text="⚙ Reference Management", bootstyle="success", command=self.open_reference_management).pack(pady=(10, 5), fill="x")
+        self.selected_ref_label = tb.Label(sidebar_inner, text="Reference: None", font=("Helvetica", 14, "bold"), bootstyle="secondary")
+        self.selected_ref_label.pack(pady=(10, 5), fill="x")
+        self.ok_label = tb.Label(sidebar_inner, text="OK: 0", font=("Helvetica", 18, "bold"), bootstyle="success")
+        self.ok_label.pack(pady=(5, 5), fill="x")
+        self.nok_label = tb.Label(sidebar_inner, text="NOK: 0", font=("Helvetica", 18, "bold"), bootstyle="danger")
+        self.nok_label.pack(pady=(5, 10), fill="x")
 
         # ─── Main Content ───
         self.main_content = tb.Frame(self)
@@ -150,42 +273,47 @@ class MainApp(tb.Window):
        
         # Configure main_content grid to be responsive
         self.main_content.grid_rowconfigure(0, weight=1) # Camera row expands
-        self.main_content.grid_rowconfigure(1, weight=0) # Result row 
+        self.main_content.grid_rowconfigure(1, weight=0) # Result row
+        self.main_content.grid_rowconfigure(2, weight=0) # OCR text row
         self.main_content.grid_columnconfigure(0, weight=1) # Column expands
 
         self.camera_frame = tb.Labelframe(self.main_content, text="Live Feed")
         self.camera_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        self.camera_label = tb.Label(self.camera_frame, cursor="crosshair")
+        self.camera_label = tb.Label(self.camera_frame, cursor="arrow")
         self.camera_label.pack(fill="both", expand=True)
 
         self.result_label = tb.Label(self.main_content, text="Ready", font=("Helvetica", 18, "bold"), bootstyle="info", anchor="center")
         self.result_label.grid(row=1, column=0, sticky="ew", pady=10)
        
-        self.camera_label.bind("<Button-1>", self.on_mouse_down)
-        self.camera_label.bind("<B1-Motion>", self.on_mouse_drag)
-        self.camera_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.camera_label.bind("<Configure>", self._on_camera_label_configure)
+        self.camera_label.bind("<Button-1>", lambda e: "break")
+        self.camera_label.bind("<B1-Motion>", lambda e: "break")
+        self.camera_label.bind("<ButtonRelease-1>", lambda e: "break")
         self.rect_start = None
 
     def test_ocr(self):
-        if not self.testing_ocr:
-            if not hasattr(self.camera, 'expected_text') or not self.camera.expected_text:
-                tb.dialogs.Messagebox.show_warning("Please select a reference first.", title="Reference Required", parent=self)
-                return
-            self.testing_ocr = True
-            self.test_btn.configure(text="Stop Test", bootstyle="danger")
-            self.camera._run_test_ocr = True
-            if self.camera.current_roi:
-                self.update_result_ui("OCR Test started...", "info")
-            else:
-                self.update_result_ui("OCR Test active. Draw ROI to begin.", "info")
+        ref_name = self.ref_var.get().strip()
+        selected_ref = next((r for r in self.references if r['name'] == ref_name), None)
+        if not selected_ref:
+            tb.dialogs.Messagebox.show_warning("Please select a reference first.", title="Reference Required", parent=self)
+            return
+
+        self.camera.set_roi(*selected_ref['roi'])
+        self.camera.expected_text = selected_ref['expected_text']
+        self.camera.last_detected_text = ""
+        self.camera.is_match = False
+        self.camera.ocr_done = False
+
+        if not self.camera.current_roi or not self.camera.expected_text:
+            tb.dialogs.Messagebox.show_warning("The selected reference has no ROI or expected text.", title="Reference Required", parent=self)
+            return
+
+        detected, match = self.camera.perform_ocr_once()
+        if match:
+            self.update_result_ui("OK", "success")
         else:
-            self.testing_ocr = False
-            self.test_btn.configure(text="Test", bootstyle="success")
-            self.camera._run_test_ocr = False
-            self.camera.clear_roi()
-            self.ref_var.set("")
-            self.update_result_ui("OCR Test stopped and ROI cleared", "warning")
+            self.update_result_ui("NOK", "danger")
+        self._update_reference_counters(match)
 
     # ─── VIRTUAL KEYBOARD SYSTEM ───
     def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
@@ -253,6 +381,22 @@ class MainApp(tb.Window):
         win.focus_force()
         win.after(200, lambda: win.attributes("-topmost", False))
         return win
+
+    def _pause_main_camera_display(self):
+        self.main_camera_display = False
+        try:
+            self.camera_label.configure(image="")
+            self.camera_label.image = None
+            self.camera_label.configure(text="Main camera paused", bootstyle="secondary")
+        except Exception:
+            pass
+
+    def _resume_main_camera_display(self):
+        self.main_camera_display = True
+        try:
+            self.camera_label.configure(text="")
+        except Exception:
+            pass
 
     def _show_top_message(self, title, message, width=380, height=150):
         popup = tb.Toplevel(self)
@@ -386,16 +530,14 @@ class MainApp(tb.Window):
         # References list
         list_frame = tb.Frame(win)
         list_frame.pack(fill="both", expand=True, padx=15, pady=(10, 5))
-        columns = ("name", "expected_text", "roi")
+        columns = ("name", "expected_text")
         self.ref_tree = tb.Treeview(list_frame, columns=columns, show="headings", bootstyle="info")
         self.ref_tree.heading("name", text="Reference Name")
         self.ref_tree.heading("expected_text", text="Expected OCR Text")
-        self.ref_tree.heading("roi", text="ROI Coordinates")
-        self.ref_tree.column("name", width=180)
-        self.ref_tree.column("expected_text", width=240)
-        self.ref_tree.column("roi", width=180)
+        self.ref_tree.column("name", width=220)
+        self.ref_tree.column("expected_text", width=300)
         for ref in self.references:
-            self.ref_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"], str(ref["roi"])))
+            self.ref_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
         self.ref_tree.pack(fill="both", expand=True)
 
         # Store reference to tree for refreshing
@@ -406,9 +548,11 @@ class MainApp(tb.Window):
         btn_frame.pack(pady=(5, 12))
         tb.Button(btn_frame, text="Add", bootstyle="success", command=self._add_reference).pack(side="left", padx=10)
         tb.Button(btn_frame, text="Edit", bootstyle="warning", command=self._edit_reference).pack(side="left", padx=10)
+        tb.Button(btn_frame, text="Remove", bootstyle="danger", command=self._remove_reference).pack(side="left", padx=10)
         tb.Button(btn_frame, text="Close", bootstyle="secondary", command=win.destroy).pack(side="left", padx=10)
 
     def _add_reference(self):
+        self._pause_main_camera_display()
         self.open_settings()
 
     def _edit_reference(self):
@@ -417,58 +561,65 @@ class MainApp(tb.Window):
             tb.dialogs.Messagebox.show_warning("Please select a reference to edit.", title="No Selection", parent=self)
             return
         item = self.management_tree.item(selected[0])
-        name, expected_text, roi_str = item['values']
-        roi = eval(roi_str) if roi_str != "None" else None
-        self._open_edit_window(name, expected_text, roi)
+        name, expected_text = item['values']
+        selected_ref = next((r for r in self.references if r['name'] == name and r['expected_text'] == expected_text), None)
+        if not selected_ref:
+            tb.dialogs.Messagebox.show_error("Unable to find the selected reference.", title="Error", parent=self)
+            return
+        self._open_edit_window(selected_ref)
 
-    def _clear_reference(self):
+    def _remove_reference(self):
         selected = self.management_tree.selection()
         if not selected:
-            tb.dialogs.Messagebox.show_warning("Please select a reference to clear.", title="No Selection", parent=self)
+            tb.dialogs.Messagebox.show_warning("Please select a reference to remove.", title="No Selection", parent=self)
             return
-        if tb.dialogs.Messagebox.yesno("Are you sure you want to delete the selected reference?", title="Confirm Delete", parent=self):
+        if tb.dialogs.Messagebox.yesno("Are you sure you want to remove the selected reference?", title="Confirm Remove", parent=self):
             item = self.management_tree.item(selected[0])
             name = item['values'][0]
             self.references = [r for r in self.references if r['name'] != name]
             self.save_references()
             self.update_ref_combo()
             self.management_tree.delete(selected[0])
+            if self.selected_reference_name == name:
+                self.selected_reference_name = None
+                self.camera.clear_roi()
+                self.camera.expected_text = ""
+                self.ref_var.set("")
+                self.update_result_ui("Reference removed", "warning")
+                if hasattr(self, 'selected_ref_label'):
+                    self.selected_ref_label.configure(text="Reference: None")
+                if hasattr(self, 'ok_label'):
+                    self.ok_label.configure(text="OK: 0")
+                if hasattr(self, 'nok_label'):
+                    self.nok_label.configure(text="NOK: 0")
 
     def _refresh_management_tree(self):
         if hasattr(self, 'management_tree') and self.management_tree.winfo_exists():
             self.management_tree.delete(*self.management_tree.get_children())
             for ref in self.references:
-                self.management_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"], str(ref["roi"])))
+                self.management_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
 
-    def _open_edit_window(self, name, expected_text, roi):
-        win = self._create_child_window("Edit Reference", 520, 400, parent=self)
-        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree()] if e.widget == win else None)
-        
-        container = tb.Frame(win, padding=25)
+    def _open_edit_window(self, ref):
+        win = self._create_child_window("Edit Reference", 620, 560, parent=self)
+        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree(), self._resume_main_camera_display()] if e.widget == win else None)
+        self._pause_main_camera_display()
+
+        preview_label = self._create_live_preview(win, width=580, height=300, initial_roi=ref.get('roi'))
+
+        container = tb.Frame(win, padding=15)
         container.pack(fill="both", expand=True)
-
-        # Configure grid
         container.grid_columnconfigure(0, weight=1)
-        container.grid_rowconfigure(0, weight=0)
-        container.grid_rowconfigure(1, weight=0)
-        container.grid_rowconfigure(2, weight=0)
-        container.grid_rowconfigure(3, weight=0)
-        container.grid_rowconfigure(4, weight=1)
 
-        row_idx = 0
-        tb.Label(container, text="Reference Name:", font=("Helvetica", 12, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0, 5))
-        row_idx += 1
-        name_var = tk.StringVar(value=name)
+        tb.Label(container, text="Reference Name:", font=("Helvetica", 12, "bold")).grid(row=0, column=0, sticky="w", pady=(10, 5))
+        name_var = tk.StringVar(value=ref.get('name', ''))
         e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", 14))
-        e1.grid(row=row_idx, column=0, sticky="ew", pady=(0, 20))
-        
-        row_idx += 1
-        tb.Label(container, text="Expected Text:", font=("Helvetica", 12, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0, 5))
-        row_idx += 1
-        text_var = tk.StringVar(value=expected_text)
+        e1.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+
+        tb.Label(container, text="Expected Text:", font=("Helvetica", 12, "bold")).grid(row=2, column=0, sticky="w", pady=(0, 5))
+        text_var = tk.StringVar(value=ref.get('expected_text', ''))
         e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", 14))
-        e2.grid(row=row_idx, column=0, sticky="ew", pady=(0, 25))
-        
+        e2.grid(row=3, column=0, sticky="ew", pady=(0, 15))
+
         def trigger_e1(e):
             e1.focus_set()
             e1.icursor(tk.END)
@@ -479,65 +630,69 @@ class MainApp(tb.Window):
             self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
         e1.bind("<Button-1>", trigger_e1)
         e2.bind("<Button-1>", trigger_e2)
-        
-        row_idx += 1
-        
+
+        original_name = ref.get('name')
+
         def confirm():
             new_name = name_var.get().strip()
             new_expected = text_var.get().strip()
-            if new_name and new_expected:
-                # Update reference
-                for r in self.references:
-                    if r['name'] == name:
-                        r['name'] = new_name
-                        r['expected_text'] = new_expected
-                        break
-                self.save_references()
-                self.update_ref_combo()
-                # Update tree
-                selected = self.management_tree.selection()
-                if selected:
-                    self.management_tree.item(selected[0], values=(new_name, new_expected, str(roi)))
-                self._close_keyboard()
-                win.destroy()
-            else:
+            if not new_name or not new_expected:
                 tb.dialogs.Messagebox.show_error("All fields are required!", title="Error", parent=win)
-        
+                return
+            if new_name != original_name and any(r['name'] == new_name for r in self.references):
+                tb.dialogs.Messagebox.show_error("Another reference already uses that name.", title="Duplicate Name", parent=win)
+                return
+            selected_roi = preview_label.local_roi
+            if selected_roi is None:
+                tb.dialogs.Messagebox.show_warning("Please select an ROI on the live preview.", title="ROI Required", parent=win)
+                return
+            frame_roi = self._preview_to_frame_roi(selected_roi, preview_label.preview_size)
+
+            ref['name'] = new_name
+            ref['expected_text'] = new_expected
+            ref['roi'] = frame_roi
+            if 'ok_count' not in ref:
+                ref['ok_count'] = 0
+            if 'nok_count' not in ref:
+                ref['nok_count'] = 0
+
+            if self.selected_reference_name == original_name:
+                self.selected_reference_name = new_name
+                self.ref_var.set(new_name)
+                self.camera.expected_text = new_expected
+
+            self.save_references()
+            self.update_ref_combo()
+            self._refresh_management_tree()
+            self._close_keyboard()
+            win.destroy()
+            self.update_result_ui(f"Reference '{new_name}' updated.", "success")
+
         confirm_btn = tb.Button(container, text="SAVE CHANGES", bootstyle="success-outline", command=confirm)
-        confirm_btn.grid(row=5, column=0, sticky="ew", pady=10)
+        confirm_btn.grid(row=4, column=0, sticky="ew", pady=(0, 10))
 
     # ─── SETTINGS WINDOW ───
     def open_settings(self):
-        win = self._create_child_window("Reference Setup", 520, 400, parent=self)
-        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree()] if e.widget == win else None)
-        
-        container = tb.Frame(win, padding=25)
+        win = self._create_child_window("Add Reference", 620, 620, parent=self)
+        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree(), self._resume_main_camera_display()] if e.widget == win else None)
+        self._pause_main_camera_display()
+
+        preview_label = self._create_live_preview(win, width=580, height=320)
+
+        container = tb.Frame(win, padding=15)
         container.pack(fill="both", expand=True)
-
-        # Configure grid for the container
         container.grid_columnconfigure(0, weight=1)
-        container.grid_rowconfigure(0, weight=0)
-        container.grid_rowconfigure(1, weight=0)
-        container.grid_rowconfigure(2, weight=0)
-        container.grid_rowconfigure(3, weight=0)
-        container.grid_rowconfigure(4, weight=1) # Spacer row
 
-        row_idx = 0
-        tb.Label(container, text="Reference Name:", font=("Helvetica", 12, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0, 5))
-        row_idx += 1
+        tb.Label(container, text="Reference Name:", font=("Helvetica", 12, "bold")).grid(row=0, column=0, sticky="w", pady=(10, 5))
         name_var = tk.StringVar()
         e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", 14))
-        e1.associated_var = name_var
-        e1.grid(row=row_idx, column=0, sticky="ew", pady=(0, 20))
-        
-        row_idx += 1
-        tb.Label(container, text="Expected Text:", font=("Helvetica", 12, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0, 5))
-        row_idx += 1
+        e1.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+
+        tb.Label(container, text="Expected Text:", font=("Helvetica", 12, "bold")).grid(row=2, column=0, sticky="w", pady=(0, 5))
         text_var = tk.StringVar()
         e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", 14))
-        e2.associated_var = text_var
-        e2.grid(row=row_idx, column=0, sticky="ew", pady=(0, 25))
-        
+        e2.grid(row=3, column=0, sticky="ew", pady=(0, 15))
+
         def trigger_e1(e):
             e1.focus_set()
             e1.icursor(tk.END)
@@ -548,23 +703,32 @@ class MainApp(tb.Window):
             self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
         e1.bind("<Button-1>", trigger_e1)
         e2.bind("<Button-1>", trigger_e2)
-        
-        row_idx += 1 # This is the spacer row 4
-        
+
         def confirm():
             name = name_var.get().strip()
             expected = text_var.get().strip()
-            if name and expected:
-                self.pending_ref = {"name": name, "expected_text": expected, "roi": None}
-                self.adding_new_ref = True
-                self._close_keyboard()
-                win.destroy()
-                self.update_result_ui(f"Please draw the ROI for: {name}", "warning")
-            else:
+            selected_roi = preview_label.local_roi
+            if not name or not expected:
                 tb.dialogs.Messagebox.show_error("All fields are required!", title="Error", parent=win)
-        
-        confirm_btn = tb.Button(container, text="CONTINUE TO ROI", bootstyle="success-outline", command=confirm)
-        confirm_btn.grid(row=5, column=0, sticky="ew", pady=10)
+                return
+            if not selected_roi:
+                tb.dialogs.Messagebox.show_warning("Please select an ROI on the live preview.", title="ROI Required", parent=win)
+                return
+            frame_roi = self._preview_to_frame_roi(selected_roi, preview_label.preview_size)
+            new_ref = {"name": name, "expected_text": expected, "roi": frame_roi, "ok_count": 0, "nok_count": 0}
+            self.references.append(new_ref)
+            self.save_references()
+            self.update_ref_combo()
+            self._refresh_management_tree()
+            self._close_keyboard()
+            win.destroy()
+            self.camera.clear_roi()
+            self.ref_var.set("")
+            self._clear_ocr_results()
+            self.update_result_ui(f"Reference '{name}' added.", "success")
+
+        confirm_btn = tb.Button(container, text="SAVE REFERENCE", bootstyle="success-outline", command=confirm)
+        confirm_btn.grid(row=4, column=0, sticky="ew", pady=(0, 10))
 
     # ─── ARCHIVE & PASSWORD WINDOW ───
     def open_archive(self):
@@ -576,22 +740,20 @@ class MainApp(tb.Window):
         lbl.pack(pady=10)
 
         # Create a table (Treeview) to display the references
-        columns = ("name", "expected_text", "roi")
+        columns = ("name", "expected_text")
         tree = tb.Treeview(archive_win, columns=columns, show="headings", bootstyle="info")
         
         # Define headings
         tree.heading("name", text="Reference Name")
         tree.heading("expected_text", text="Expected OCR Text")
-        tree.heading("roi", text="ROI Coordinates")
         
         # Set column widths
-        tree.column("name", width=150)
-        tree.column("expected_text", width=250)
-        tree.column("roi", width=200)
+        tree.column("name", width=200)
+        tree.column("expected_text", width=340)
 
         # Populate the table from your self.references list
         for ref in self.references:
-            tree.insert("", tk.END, values=(ref["name"], ref["expected_text"], str(ref["roi"])))
+            tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
 
         tree.pack(fill="both", expand=True, padx=20, pady=20)
 
@@ -657,7 +819,16 @@ class MainApp(tb.Window):
 
     def load_references(self):
         if os.path.exists("references.json"):
-            with open("references.json", "r") as f: return json.load(f)
+            with open("references.json", "r") as f:
+                references = json.load(f)
+            for ref in references:
+                if 'ok_count' not in ref:
+                    ref['ok_count'] = 0
+                if 'nok_count' not in ref:
+                    ref['nok_count'] = 0
+                if 'roi' not in ref:
+                    ref['roi'] = None
+            return references
         return []
 
     def save_references(self):
@@ -676,9 +847,16 @@ class MainApp(tb.Window):
         ref_name = self.ref_var.get()
         ref_data = next((r for r in self.references if r["name"] == ref_name), None)
         if ref_data:
+            self.selected_reference_name = ref_data['name']
             self.camera.set_roi(*ref_data["roi"])
             self.camera.expected_text = ref_data["expected_text"]
             self.update_result_ui(f"Active: {ref_data['name']}", "info")
+            if hasattr(self, 'selected_ref_label'):
+                self.selected_ref_label.configure(text=f"Reference: {ref_data['name']}")
+            if hasattr(self, 'ok_label'):
+                self.ok_label.configure(text=f"OK: {ref_data.get('ok_count', 0)}")
+            if hasattr(self, 'nok_label'):
+                self.nok_label.configure(text=f"NOK: {ref_data.get('nok_count', 0)}")
             # Queue Modbus write to worker thread (never blocks main thread)
             self.modbus_write_queue.put({"type": "write_result", "value": RESULT_IDLE})
 
@@ -849,13 +1027,10 @@ class MainApp(tb.Window):
                 time.sleep(3) # Wait before retrying camera
         frame_count = 0
         while self.running:
-            # Run OCR only when test mode is active, sampling every 3 frames.
-            should_i_ocr = self.camera._run_test_ocr and (frame_count % 3 == 0)
-            
             img_tk, is_match = self.camera.get_frame(
-                self.camera_width, 
-                self.camera_height, 
-                run_ocr=should_i_ocr
+                self.camera_width,
+                self.camera_height,
+                run_ocr=False
             )
             
             if img_tk:
@@ -866,11 +1041,6 @@ class MainApp(tb.Window):
                     self.camera_queue.put({"type": "frame", "img_tk": img_tk, "is_match": is_match})
                 except queue.Empty:
                     pass
-
-                if should_i_ocr and self.camera.current_roi and self.camera.expected_text:
-                    status_text = "OK" if is_match else "NOK"
-                    bootstyle = "success" if is_match else "danger"
-                    self.camera_queue.put({"type": "status", "text": status_text, "bootstyle": bootstyle})
             
             frame_count += 1
             time.sleep(0.03) # Lower CPU load while keeping a smooth frame rate
@@ -884,8 +1054,9 @@ class MainApp(tb.Window):
             while True:
                 item = self.camera_queue.get_nowait()
                 if item["type"] == "frame":
-                    latest_frame = item["img_tk"]
-                    self.camera_label.image = item["img_tk"]
+                    if self.main_camera_display:
+                        latest_frame = item["img_tk"]
+                        self.camera_label.image = item["img_tk"]
                 elif item["type"] == "status":
                     self.update_result_ui(item["text"], item["bootstyle"])
                 elif item["type"] == "error":
@@ -894,25 +1065,10 @@ class MainApp(tb.Window):
         except queue.Empty:
             pass
 
-        if latest_frame is not None:
+        if latest_frame is not None and self.main_camera_display:
             self.camera_label.configure(image=latest_frame)
 
         # Check for OCR test result
-        if self.camera.test_result:
-            detected, match = self.camera.test_result
-            self.camera.test_result = None
-            if self.testing_ocr:
-                if match:
-                    self.update_result_ui(f"Test: PASS - '{detected}'", "success")
-                else:
-                    self.update_result_ui(f"Test: FAIL - '{detected}' vs '{self.camera.expected_text}'", "danger")
-            else:
-                # One-time test result
-                if match:
-                    tb.dialogs.Messagebox.show_info(f"OCR Test Passed: Detected '{detected}' matches expected.", title="Test Result", parent=self)
-                else:
-                    tb.dialogs.Messagebox.show_error(f"OCR Test Failed: Detected '{detected}' does not match expected '{self.camera.expected_text}'.", title="Test Result", parent=self)
-
         # Process Modbus queue
         try:
             while True:
