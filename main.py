@@ -155,37 +155,35 @@ class MainApp(tb.Window):
 
         self.camera_frame = tb.Labelframe(self.main_content, text="Live Feed")
         self.camera_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        self.camera_label = tb.Label(self.camera_frame)
+        self.camera_label = tb.Label(self.camera_frame, cursor="crosshair")
         self.camera_label.pack(fill="both", expand=True)
 
         self.result_label = tb.Label(self.main_content, text="Ready", font=("Helvetica", 18, "bold"), bootstyle="info", anchor="center")
         self.result_label.grid(row=1, column=0, sticky="ew", pady=10)
        
         self.camera_label.bind("<Button-1>", self.on_mouse_down)
-        self.camera_label.bind("<B1-1>", self.on_mouse_drag)
+        self.camera_label.bind("<B1-Motion>", self.on_mouse_drag)
         self.camera_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.camera_label.bind("<Configure>", self._on_camera_label_configure)
         self.rect_start = None
 
     def test_ocr(self):
         if not self.testing_ocr:
-            if not self.camera.current_roi:
-                tb.dialogs.Messagebox.show_warning("Please select a Region of Interest (ROI) first by drawing a rectangle on the camera feed.", title="ROI Required", parent=self)
-                return
             if not hasattr(self.camera, 'expected_text') or not self.camera.expected_text:
                 tb.dialogs.Messagebox.show_warning("Please select a reference first.", title="Reference Required", parent=self)
                 return
             self.testing_ocr = True
             self.test_btn.configure(text="Stop Test", bootstyle="danger")
             self.camera._run_test_ocr = True
-            self.update_result_ui("OCR Test started...", "info")
+            if self.camera.current_roi:
+                self.update_result_ui("OCR Test started...", "info")
+            else:
+                self.update_result_ui("OCR Test active. Draw ROI to begin.", "info")
         else:
             self.testing_ocr = False
             self.test_btn.configure(text="Test", bootstyle="success")
             self.camera._run_test_ocr = False
-            self.camera.clear_roi()
-            self.ref_var.set("")
-            self.update_result_ui("OCR Test stopped and ROI cleared", "warning")
+            self.update_result_ui("OCR Test stopped", "warning")
 
     # ─── VIRTUAL KEYBOARD SYSTEM ───
     def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
@@ -406,7 +404,6 @@ class MainApp(tb.Window):
         btn_frame.pack(pady=(5, 12))
         tb.Button(btn_frame, text="Add", bootstyle="success", command=self._add_reference).pack(side="left", padx=10)
         tb.Button(btn_frame, text="Edit", bootstyle="warning", command=self._edit_reference).pack(side="left", padx=10)
-        tb.Button(btn_frame, text="Clear", bootstyle="danger", command=self._clear_reference).pack(side="left", padx=10)
         tb.Button(btn_frame, text="Close", bootstyle="secondary", command=win.destroy).pack(side="left", padx=10)
 
     def _add_reference(self):
@@ -618,7 +615,7 @@ class MainApp(tb.Window):
         rx, ry = int(ui_x * scale_x), int(ui_y * scale_y)
         rw, rh = int(ui_w * scale_x), int(ui_h * scale_y)
 
-        self.rect_start = None
+
         self.camera.temp_roi = None
 
         if rw < 5 or rh < 5:
@@ -645,9 +642,8 @@ class MainApp(tb.Window):
                     f"Reference '{self.pending_ref['name']}' has been saved with ROI!\nDimensions: {rw}x{rh}px"
                 )
 
-                self.camera.set_roi(rx, ry, rw, rh)
-                self.camera.expected_text = self.pending_ref['expected_text']
-                self.ref_var.set(self.pending_ref['name'])
+                self.camera.clear_roi()
+                self.ref_var.set("")
             self.adding_new_ref = False
             self.pending_ref = None
         elif self._roi_dragging:
@@ -693,6 +689,9 @@ class MainApp(tb.Window):
     def on_mouse_drag(self, event):
         if self.rect_start:
             self._roi_dragging = True
+            if self.camera.current_roi and self.camera.temp_roi is None:
+                self.camera.clear_roi()
+            
             scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
             scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
 
@@ -848,8 +847,8 @@ class MainApp(tb.Window):
                 time.sleep(3) # Wait before retrying camera
         frame_count = 0
         while self.running:
-            # Run OCR only every 15 frames (approx. every 0.5 seconds)
-            should_i_ocr = (frame_count % 15 == 0)
+            # Run OCR only when test mode is active, sampling every 3 frames.
+            should_i_ocr = self.camera._run_test_ocr and (frame_count % 3 == 0)
             
             img_tk, is_match = self.camera.get_frame(
                 self.camera_width, 
