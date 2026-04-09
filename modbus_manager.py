@@ -29,7 +29,7 @@ class ModbusManager:
     A Modbus Client to actively poll and communicate with a PLC.
     This class is based on the user-provided example.md.
     """
-    def __init__(self, host='192.168.0.50', port=5502, timeout=30):
+    def __init__(self, host='127.0.0.1', port=5502, timeout=30):
         self.logger = logging.getLogger('ModbusManager')
         if not self.logger.handlers:
             logging.basicConfig(

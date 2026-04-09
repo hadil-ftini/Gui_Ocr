@@ -2,10 +2,10 @@ import cv2
 from PIL import Image, ImageTk
 import pytesseract
 import numpy as np
-from difflib import SequenceMatcher
+import re
 
 # DISPLAY_WIDTH = 840 # REMOVED: Replaced by dynamic target dimensions
-OCR_MATCH_THRESHOLD = 0.8  # 80% similarity required for a match
+OCR_MATCH_THRESHOLD = 0.8  # kept for compatibility but exact match is used by default
 
 class CameraApp:
     def __init__(self):
@@ -24,9 +24,16 @@ class CameraApp:
         self._last_cached_dims = (None, None)
         self._last_pil_image = None
         self._last_frame_hash = 0
+        # Test OCR
+        self._run_test_ocr = False
+        self.test_result = None
 
     def start_camera(self, camera_index=1):
-        self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture(camera_index)
+        # Lower capture resolution for Raspberry Pi performance while keeping sufficient detail
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)
         self.is_running = self.cap.isOpened()
         return self.is_running
 
@@ -64,45 +71,46 @@ class CameraApp:
 
     def _process_frame(self, frame):
         """Internal method to run OCR and comparison if ROI and expected_text are set."""
-        if not self.expected_text:
+        if not self.expected_text or self.current_roi is None:
             self.is_match = False
             self.last_detected_text = ""
             return
 
         h_frame, w_frame, _ = frame.shape
-        
-        # If no ROI is specified, use the full frame
-        if self.current_roi is None:
-            x, y, w, h = 0, 0, w_frame, h_frame
-        else:
-            x, y, w, h = self._clamp_roi(*self.current_roi, w_frame, h_frame)
-        
+        x, y, w, h = self._clamp_roi(*self.current_roi, w_frame, h_frame)
+
         # Crop and process image for OCR
         try:
             roi_frame = frame[y:y+h, x:x+w]
-            if roi_frame.size == 0: raise ValueError("Empty ROI")
+            if roi_frame.size == 0:
+                raise ValueError("Empty ROI")
             gray = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
             thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-        except Exception as e:
+        except Exception:
             self.is_match = False
             self.last_detected_text = "ROI Error"
             return
 
-        # OCR
+        # OCR with whitelist
         try:
-            detected_text = pytesseract.image_to_string(thresh, config='--psm 6').strip()
-            self.last_detected_text = detected_text
-        except Exception as e:
+            config = '--psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.'
+            detected_text = pytesseract.image_to_string(thresh, config=config)
+            filtered_text = re.sub(r'[^A-Za-z0-9\-.]+', '', detected_text).strip()
+            self.last_detected_text = filtered_text
+        except Exception:
             self.last_detected_text = "OCR Error"
             self.is_match = False
             return
 
-        # Compare
-        if detected_text:
-            ratio = SequenceMatcher(None, self.expected_text.lower(), detected_text.lower()).ratio()
-            self.is_match = ratio >= OCR_MATCH_THRESHOLD
+        # Compare detected text with the selected reference text
+        if filtered_text:
+            self.is_match = filtered_text.lower() == self.expected_text.strip().lower()
         else:
             self.is_match = False
+
+        if self._run_test_ocr:
+            self.test_result = (filtered_text, self.is_match)
+            # Do not reset _run_test_ocr here, let the UI control it
 
     def get_frame(self, target_width=None, target_height=None, run_ocr=False): 
         if not self.is_running or self.cap is None: return None, None
@@ -126,33 +134,22 @@ class CameraApp:
             tx, ty, tw, th = self.temp_roi
             cv2.rectangle(frame, (tx, ty), (tx + tw, ty + th), (255, 120, 0), 2)
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pil = Image.fromarray(rgb)
-
         # RESIZING LOGIC with dimension caching
         if target_width and target_height and target_width > 0 and target_height > 0:
             target_dims = (int(target_width), int(target_height))
-            
-            # Only resize if target dimensions changed
-            if self._last_cached_dims != target_dims:
-                original_width, original_height = pil.size
-                new_width, new_height = target_dims
-                
-                # Use faster BILINEAR resampling instead of LANCZOS
-                pil = pil.resize((new_width, new_height), Image.Resampling.BILINEAR)
-                self._last_cached_dims = target_dims
-                
-                # Store scale per axis for mapping UI events (mouse clicks) back to frame coordinates
-                self.display_scale_x = new_width / original_width
-                self.display_scale_y = new_height / original_height
-                self.display_scale = self.display_scale_x
-            else:
-                # Resize to cached dimensions if they haven't changed
-                pil = pil.resize(target_dims, Image.Resampling.BILINEAR)
+            original_width = frame.shape[1]
+            original_height = frame.shape[0]
+            frame = cv2.resize(frame, target_dims, interpolation=cv2.INTER_LINEAR)
+            self._last_cached_dims = target_dims
+            self.display_scale_x = target_dims[0] / original_width
+            self.display_scale_y = target_dims[1] / original_height
+            self.display_scale = self.display_scale_x
         else:
             self.display_scale_x = 1.0
             self.display_scale_y = 1.0
             self.display_scale = 1.0
             self._last_cached_dims = (None, None)
-            
+
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil = Image.fromarray(rgb)
         return ImageTk.PhotoImage(pil), self.is_match

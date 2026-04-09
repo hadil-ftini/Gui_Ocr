@@ -25,7 +25,7 @@ REG_START_CYCLE = 12
 REG_RESULT_CODE = 20 # Register where the vision app writes its result
 
 class PLCSimulator:
-    def __init__(self, host='192.168.0.50', port=5502):
+    def __init__(self, host='127.0.0.1', port=5502):
         self.logger = logger
         self.host = host
         self.port = port
@@ -106,8 +106,8 @@ class PLCHmi(tb.Window):
         
         # Grid buttons for responsiveness
         btn_container.columnconfigure(0, weight=1)
-        ttk.Button(btn_container, text="Cam 1, Ref 'REF01'", bootstyle="outline-primary", 
-                   command=lambda: self.run_recipe(1, 'REF01')).grid(row=0, column=0, sticky="ew", pady=3)
+        ttk.Button(btn_container, text="Cam 1, Ref hhh", bootstyle="outline-primary", 
+                   command=lambda: self.run_recipe(1, 'hhh')).grid(row=0, column=0, sticky="ew", pady=3)
         ttk.Button(btn_container, text="Cam 1, Ref 'REF02'", bootstyle="outline-primary", 
                    command=lambda: self.run_recipe(1, 'REF02')).grid(row=1, column=0, sticky="ew", pady=3)
         ttk.Button(btn_container, text="Cam 2, Ref 'XYZ'", bootstyle="outline-primary", 

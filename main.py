@@ -27,7 +27,7 @@ class MainApp(tb.Window):
 
         # -- Modbus Client Setup --
         # IMPORTANT: Set the correct IP address for your PLC here
-        self.modbus_manager = mm.ModbusManager(host="192.168.0.50") 
+        self.modbus_manager = mm.ModbusManager(host="127.0.0.1") 
         self.last_poll_time = 0
         self.poll_interval = 1  # Poll PLC every 1 second
         self.last_plc_ref = ""
@@ -41,11 +41,15 @@ class MainApp(tb.Window):
         self.current_next_widget = None
         self._closing_keyboard = False
         
+        # Test OCR state
+        self.testing_ocr = False
+        
         self.setup_ui()
        
         self.camera = cam.CameraApp()
         self.camera_width = 1 # Initialize with dummy values
         self.camera_height = 1 # Initialize with dummy values
+        self._roi_dragging = False
 
         # Threading setup
         self.modbus_queue = queue.Queue()
@@ -116,17 +120,13 @@ class MainApp(tb.Window):
             print(f"Logo2 not found: {e}")
         # Modbus Toggle Button
         self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus)
-        self.modbus_btn.grid(row=0, column=3, padx=15, pady=10, sticky="e")
+        self.modbus_btn.grid(row=0, column=4, padx=15, pady=10, sticky="e")
         
-        # Theme button on the far right
-        self.theme_mb = tb.Menubutton(self.header, text="Themes", bootstyle="primary")
-        self.theme_mb.grid(row=0, column=4, padx=15, pady=10, sticky="e")
-        self.theme_menu = tb.Menu(self.theme_mb)
-        for theme in tm.get_available_themes():
-            self.theme_menu.add_command(label=theme, command=lambda t=theme: self.change_theme(t))
-        self.theme_mb["menu"] = self.theme_menu
+        # Test OCR Button
+        self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr)
+        self.test_btn.grid(row=0, column=3, padx=15, pady=10, sticky="e")
 
-        # Reference combobox to the left of the theme button
+        # Reference combobox to the left of the test button
         self.ref_var = tk.StringVar()
         self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
                                      values=[r['name'] for r in self.references],
@@ -142,9 +142,7 @@ class MainApp(tb.Window):
         sidebar_inner = tb.Frame(self.sidebar, bootstyle="dark")
         sidebar_inner.pack(padx=10, pady=10, fill="both", expand=True)
 
-        tb.Button(sidebar_inner, text="⚙ Add Reference", bootstyle="success", command=self.open_settings).pack(pady=10, fill="x")
-        tb.Button(sidebar_inner, text="📁 Archive", bootstyle="primary", command=self.open_archive).pack(pady=10, fill="x")
-        tb.Button(sidebar_inner, text="Clear Zone", bootstyle="warning", command=self.clear_zone).pack(pady=10, fill="x")
+        tb.Button(sidebar_inner, text="⚙ Reference Management", bootstyle="success", command=self.open_reference_management).pack(pady=10, fill="x")
 
         # ─── Main Content ───
         self.main_content = tb.Frame(self)
@@ -169,32 +167,58 @@ class MainApp(tb.Window):
         self.camera_label.bind("<Configure>", self._on_camera_label_configure)
         self.rect_start = None
 
+    def test_ocr(self):
+        if not self.testing_ocr:
+            if not self.camera.current_roi:
+                tb.dialogs.Messagebox.show_warning("Please select a Region of Interest (ROI) first by drawing a rectangle on the camera feed.", title="ROI Required", parent=self)
+                return
+            if not hasattr(self.camera, 'expected_text') or not self.camera.expected_text:
+                tb.dialogs.Messagebox.show_warning("Please select a reference first.", title="Reference Required", parent=self)
+                return
+            self.testing_ocr = True
+            self.test_btn.configure(text="Stop Test", bootstyle="danger")
+            self.camera._run_test_ocr = True
+            self.update_result_ui("OCR Test started...", "info")
+        else:
+            self.testing_ocr = False
+            self.test_btn.configure(text="Test", bootstyle="success")
+            self.camera._run_test_ocr = False
+            self.camera.clear_roi()
+            self.ref_var.set("")
+            self.update_result_ui("OCR Test stopped and ROI cleared", "warning")
+
     # ─── VIRTUAL KEYBOARD SYSTEM ───
     def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
-        if self._closing_keyboard: return
+        if self._closing_keyboard:
+            return
         self.current_kb_entry = entry
         self.current_kb_var = kb_var
         self.current_next_widget = next_widget
         parent_win = entry.winfo_toplevel()
-        if not self.keyboard_win or not self.keyboard_win.winfo_exists():
-            self.keyboard_win = tb.Toplevel(parent_win)
-            self.keyboard_win.title("Keyboard")
-            
-            # Center keyboard and make it responsive
-            kb_width = min(800, int(self.winfo_screenwidth() * 0.6))
-            kb_height = 350
-            x = (self.winfo_screenwidth() // 2) - (kb_width // 2)
-            y = self.winfo_screenheight() - kb_height - 50 # Position at bottom
-            self.keyboard_win.geometry(f"{kb_width}x{kb_height}+{x}+{y}")
-            
-            self.keyboard_win.attributes("-topmost", True)
-            self.keyboard_win.resizable(True, True)
-            self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
-            self.keyboard_win.transient(parent_win)
-            try:
-                self.keyboard_win.attributes("-toolwindow", 1)
-            except tk.TclError:
-                pass
+
+        if self.keyboard_win and self.keyboard_win.winfo_exists():
+            self._close_keyboard()
+
+        self.keyboard_win = tb.Toplevel(parent_win)
+        self.keyboard_win.title("Keyboard")
+
+        # Center keyboard and make it responsive
+        kb_width = min(800, int(self.winfo_screenwidth() * 0.6))
+        kb_height = 350
+        x = (self.winfo_screenwidth() // 2) - (kb_width // 2)
+        y = self.winfo_screenheight() - kb_height - 50 # Position at bottom
+        self.keyboard_win.geometry(f"{kb_width}x{kb_height}+{x}+{y}")
+
+        self.keyboard_win.attributes("-topmost", True)
+        self.keyboard_win.resizable(True, True)
+        self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
+        self.keyboard_win.transient(parent_win)
+        self.keyboard_win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == self.keyboard_win else None)
+        try:
+            self.keyboard_win.attributes("-toolwindow", 1)
+        except tk.TclError:
+            pass
+
         self.keyboard_win.lift()
         self._build_keyboard_layout()
         entry.focus_set()
@@ -208,6 +232,47 @@ class MainApp(tb.Window):
         self.current_kb_var = None
         self.current_next_widget = None
         self._closing_keyboard = False
+
+    def _create_child_window(self, title, width, height, parent=None, resizable=(True, True), center=True):
+        if parent is None:
+            parent = self
+        win = tb.Toplevel(parent)
+        win.title(title)
+        if center:
+            screen_width = win.winfo_screenwidth()
+            screen_height = win.winfo_screenheight()
+            x = (screen_width // 2) - (width // 2)
+            y = (screen_height // 2) - (height // 2)
+            win.geometry(f"{width}x{height}+{x}+{y}")
+        else:
+            win.geometry(f"{width}x{height}")
+        win.resizable(*resizable)
+        win.transient(parent)
+        win.attributes("-topmost", True)
+        win.lift()
+        win.focus_force()
+        win.after(200, lambda: win.attributes("-topmost", False))
+        return win
+
+    def _show_top_message(self, title, message, width=380, height=150):
+        popup = tb.Toplevel(self)
+        popup.title(title)
+        screen_width = popup.winfo_screenwidth()
+        screen_height = popup.winfo_screenheight()
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+        popup.resizable(False, False)
+        popup.transient(self)
+        popup.attributes("-topmost", True)
+        popup.lift()
+        popup.focus_force()
+
+        container = tb.Frame(popup, padding=15)
+        container.pack(fill="both", expand=True)
+        tb.Label(container, text=message, wraplength=width - 30, font=("Helvetica", 12), bootstyle="success", anchor="center", justify="center").pack(fill="both", expand=True, pady=(0, 10))
+        tb.Button(container, text="OK", bootstyle="primary", command=popup.destroy).pack(pady=(0, 5))
+        return popup
 
     def _kb_key(self, char):
         if self.current_kb_entry and self.current_kb_entry.winfo_exists():
@@ -277,26 +342,175 @@ class MainApp(tb.Window):
         tb.Button(bottom_frame, text="Clear", bootstyle="danger", command=self._kb_clear, takefocus=0).grid(row=0, column=3, sticky="nsew", padx=5)
         tb.Button(bottom_frame, text="Close", bootstyle="secondary", command=self._close_keyboard, takefocus=0).grid(row=0, column=4, sticky="nsew", padx=5)
 
+    # ─── REFERENCE MANAGEMENT ───
+    def open_reference_management(self):
+        # Password prompt
+        password_win = self._create_child_window("Enter Password", 300, 150, parent=self, resizable=(False, False))
+
+        tb.Label(password_win, text="Password:", font=("Helvetica", 12)).pack(pady=10)
+        password_var = tk.StringVar()
+        password_entry = tb.Entry(password_win, textvariable=password_var, show="*", font=("Helvetica", 14))
+        password_entry.pack(pady=5)
+
+        def check_password():
+            if password_var.get().strip().upper() == "TUNITECH":
+                password_win.destroy()
+                self._open_management_window()
+            else:
+                tb.dialogs.Messagebox.show_error("Incorrect password, please try again.", title="Error", parent=password_win)
+
+        def on_enter(event):
+            check_password()
+
+        password_entry.bind("<Return>", on_enter)
+        password_entry.bind("<Button-1>", lambda e: self.show_virtual_keyboard(password_entry, None, password_var))
+
+        tb.Button(password_win, text="Enter", bootstyle="success", command=check_password).pack(pady=10)
+
+    def _open_management_window(self):
+        win = self._create_child_window("Reference Management", 720, 520, parent=self)
+        win.minsize(680, 460)
+        win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
+
+        # Theme control at top
+        theme_frame = tb.Frame(win)
+        theme_frame.pack(pady=10)
+        tb.Label(theme_frame, text="Theme:", font=("Helvetica", 12)).pack(side="left", padx=5)
+        self.theme_mb = tb.Menubutton(theme_frame, text="Themes", bootstyle="primary")
+        self.theme_mb.pack(side="left")
+        self.theme_menu = tb.Menu(self.theme_mb)
+        for theme in tm.get_available_themes():
+            self.theme_menu.add_command(label=theme, command=lambda t=theme: self.change_theme(t))
+        self.theme_mb["menu"] = self.theme_menu
+
+        # References list
+        list_frame = tb.Frame(win)
+        list_frame.pack(fill="both", expand=True, padx=15, pady=(10, 5))
+        columns = ("name", "expected_text", "roi")
+        self.ref_tree = tb.Treeview(list_frame, columns=columns, show="headings", bootstyle="info")
+        self.ref_tree.heading("name", text="Reference Name")
+        self.ref_tree.heading("expected_text", text="Expected OCR Text")
+        self.ref_tree.heading("roi", text="ROI Coordinates")
+        self.ref_tree.column("name", width=180)
+        self.ref_tree.column("expected_text", width=240)
+        self.ref_tree.column("roi", width=180)
+        for ref in self.references:
+            self.ref_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"], str(ref["roi"])))
+        self.ref_tree.pack(fill="both", expand=True)
+
+        # Store reference to tree for refreshing
+        self.management_tree = self.ref_tree
+
+        # Buttons at bottom
+        btn_frame = tb.Frame(win)
+        btn_frame.pack(pady=(5, 12))
+        tb.Button(btn_frame, text="Add", bootstyle="success", command=self._add_reference).pack(side="left", padx=10)
+        tb.Button(btn_frame, text="Edit", bootstyle="warning", command=self._edit_reference).pack(side="left", padx=10)
+        tb.Button(btn_frame, text="Clear", bootstyle="danger", command=self._clear_reference).pack(side="left", padx=10)
+        tb.Button(btn_frame, text="Close", bootstyle="secondary", command=win.destroy).pack(side="left", padx=10)
+
+    def _add_reference(self):
+        self.open_settings()
+
+    def _edit_reference(self):
+        selected = self.management_tree.selection()
+        if not selected:
+            tb.dialogs.Messagebox.show_warning("Please select a reference to edit.", title="No Selection", parent=self)
+            return
+        item = self.management_tree.item(selected[0])
+        name, expected_text, roi_str = item['values']
+        roi = eval(roi_str) if roi_str != "None" else None
+        self._open_edit_window(name, expected_text, roi)
+
+    def _clear_reference(self):
+        selected = self.management_tree.selection()
+        if not selected:
+            tb.dialogs.Messagebox.show_warning("Please select a reference to clear.", title="No Selection", parent=self)
+            return
+        if tb.dialogs.Messagebox.yesno("Are you sure you want to delete the selected reference?", title="Confirm Delete", parent=self):
+            item = self.management_tree.item(selected[0])
+            name = item['values'][0]
+            self.references = [r for r in self.references if r['name'] != name]
+            self.save_references()
+            self.update_ref_combo()
+            self.management_tree.delete(selected[0])
+
+    def _refresh_management_tree(self):
+        if hasattr(self, 'management_tree') and self.management_tree.winfo_exists():
+            self.management_tree.delete(*self.management_tree.get_children())
+            for ref in self.references:
+                self.management_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"], str(ref["roi"])))
+
+    def _open_edit_window(self, name, expected_text, roi):
+        win = self._create_child_window("Edit Reference", 520, 400, parent=self)
+        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree()] if e.widget == win else None)
+        
+        container = tb.Frame(win, padding=25)
+        container.pack(fill="both", expand=True)
+
+        # Configure grid
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(0, weight=0)
+        container.grid_rowconfigure(1, weight=0)
+        container.grid_rowconfigure(2, weight=0)
+        container.grid_rowconfigure(3, weight=0)
+        container.grid_rowconfigure(4, weight=1)
+
+        row_idx = 0
+        tb.Label(container, text="Reference Name:", font=("Helvetica", 12, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0, 5))
+        row_idx += 1
+        name_var = tk.StringVar(value=name)
+        e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", 14))
+        e1.grid(row=row_idx, column=0, sticky="ew", pady=(0, 20))
+        
+        row_idx += 1
+        tb.Label(container, text="Expected Text:", font=("Helvetica", 12, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0, 5))
+        row_idx += 1
+        text_var = tk.StringVar(value=expected_text)
+        e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", 14))
+        e2.grid(row=row_idx, column=0, sticky="ew", pady=(0, 25))
+        
+        def trigger_e1(e):
+            e1.focus_set()
+            e1.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
+        def trigger_e2(e):
+            e2.focus_set()
+            e2.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
+        e1.bind("<Button-1>", trigger_e1)
+        e2.bind("<Button-1>", trigger_e2)
+        
+        row_idx += 1
+        
+        def confirm():
+            new_name = name_var.get().strip()
+            new_expected = text_var.get().strip()
+            if new_name and new_expected:
+                # Update reference
+                for r in self.references:
+                    if r['name'] == name:
+                        r['name'] = new_name
+                        r['expected_text'] = new_expected
+                        break
+                self.save_references()
+                self.update_ref_combo()
+                # Update tree
+                selected = self.management_tree.selection()
+                if selected:
+                    self.management_tree.item(selected[0], values=(new_name, new_expected, str(roi)))
+                self._close_keyboard()
+                win.destroy()
+            else:
+                tb.dialogs.Messagebox.show_error("All fields are required!", title="Error", parent=win)
+        
+        confirm_btn = tb.Button(container, text="SAVE CHANGES", bootstyle="success-outline", command=confirm)
+        confirm_btn.grid(row=5, column=0, sticky="ew", pady=10)
+
     # ─── SETTINGS WINDOW ───
     def open_settings(self):
-        win = tb.Toplevel(self)
-        win.title("Reference Setup")
-        
-        # Center the window
-        win.update_idletasks()
-        win_width = 520
-        win_height = 400
-        screen_width = win.winfo_screenwidth()
-        screen_height = win.winfo_screenheight()
-        x = (screen_width // 2) - (win_width // 2)
-        y = (screen_height // 2) - (win_height // 2)
-        win.geometry(f"{win_width}x{win_height}+{x}+{y}")
-        
-        win.resizable(True, True)
-        win.attributes("-topmost", True)
-        win.transient(self)
-        win.lift()
-        win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
+        win = self._create_child_window("Reference Setup", 520, 400, parent=self)
+        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree()] if e.widget == win else None)
         
         container = tb.Frame(win, padding=25)
         container.pack(fill="both", expand=True)
@@ -356,9 +570,7 @@ class MainApp(tb.Window):
     # ─── ARCHIVE & PASSWORD WINDOW ───
     def open_archive(self):
         # Create the archive window
-        archive_win = tb.Toplevel(self)
-        archive_win.title("Reference Archive")
-        archive_win.geometry("800x500")
+        archive_win = self._create_child_window("Reference Archive", 700, 460, parent=self)
         
         # Header
         lbl = tb.Label(archive_win, text="Saved References & Logs", font=("Helvetica", 16, "bold"), bootstyle="primary")
@@ -389,30 +601,33 @@ class MainApp(tb.Window):
         close_btn.pack(pady=10)
     # ─── MOUSE / ROI EVENTS ───
     def on_mouse_up(self, event):
-        if not self.rect_start: return
+        if not self.rect_start:
+            return
         x1, y1 = self.rect_start
         x2, y2 = event.x, event.y
-        
+
         # Calculate bounding box in UI coordinates first
         ui_x, ui_y = min(x1, x2), min(y1, y2)
         ui_w, ui_h = abs(x2 - x1), abs(y2 - y1)
-        
+
         # Use separate scales for X and Y to map UI coordinates back to original frame coordinates
         scale_x = 1 / getattr(self.camera, 'display_scale_x', self.camera.display_scale)
         scale_y = 1 / getattr(self.camera, 'display_scale_y', self.camera.display_scale)
-        
+
         # Map to frame coordinates
         rx, ry = int(ui_x * scale_x), int(ui_y * scale_y)
         rw, rh = int(ui_w * scale_x), int(ui_h * scale_y)
-        
+
         self.rect_start = None
         self.camera.temp_roi = None
-        
+
         if rw < 5 or rh < 5:
-            if self.adding_new_ref: self.update_result_ui("❌ ROI too small!", "danger")
+            if self.adding_new_ref:
+                self.update_result_ui("❌ ROI too small!", "danger")
+            self._roi_dragging = False
             return
-            
-        if self.adding_new_ref and self.pending_ref:
+
+        if self.adding_new_ref and self.pending_ref and self._roi_dragging:
             if any(r['name'] == self.pending_ref['name'] for r in self.references):
                 self.update_result_ui("❌ Reference name exists!", "danger")
             else:
@@ -420,15 +635,27 @@ class MainApp(tb.Window):
                 self.references.append(self.pending_ref)
                 self.save_references()
                 self.update_ref_combo()
-                tb.dialogs.Messagebox.show_info(title="Success", message=f"Reference '{self.pending_ref['name']}' saved!", parent=self)
-                self.camera.clear_roi()
-                self.update_result_ui("Reference Saved.", "success")
-                self.ref_var.set("")
+                self._refresh_management_tree()
+
+                success_msg = f"✓ Reference '{self.pending_ref['name']}' saved successfully!"
+                print(success_msg)
+                self.update_result_ui(success_msg, "success")
+                self._show_top_message(
+                    "Reference Saved",
+                    f"Reference '{self.pending_ref['name']}' has been saved with ROI!\nDimensions: {rw}x{rh}px"
+                )
+
+                self.camera.set_roi(rx, ry, rw, rh)
+                self.camera.expected_text = self.pending_ref['expected_text']
+                self.ref_var.set(self.pending_ref['name'])
             self.adding_new_ref = False
             self.pending_ref = None
-        else:
+        elif self._roi_dragging:
+            self.camera.clear_roi()
             self.camera.set_roi(rx, ry, rw, rh)
             self.update_result_ui("ROI updated manually", "info")
+
+        self._roi_dragging = False
 
     def load_references(self):
         if os.path.exists("references.json"):
@@ -436,7 +663,13 @@ class MainApp(tb.Window):
         return []
 
     def save_references(self):
-        with open("references.json", "w") as f: json.dump(self.references, f, indent=4)
+        try:
+            with open("references.json", "w") as f:
+                json.dump(self.references, f, indent=4)
+            print(f"✓ References saved successfully. Total: {len(self.references)}")
+        except Exception as e:
+            print(f"✗ Error saving references: {e}")
+            tb.dialogs.Messagebox.show_error(f"Failed to save reference: {e}", title="Save Error", parent=self)
 
     def update_ref_combo(self):
         self.ref_combo['values'] = [r['name'] for r in self.references]
@@ -452,62 +685,36 @@ class MainApp(tb.Window):
             self.modbus_write_queue.put({"type": "write_result", "value": RESULT_IDLE})
 
     def on_mouse_down(self, event):
-        # 1. Capture the starting point in UI pixels
-        # 2. Convert UI pixels to actual Camera pixels using the scale factors
-        scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
-        scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
-        
-        # This is the coordinate on the actual high-res camera frame
-        self.rect_start = (int(event.x * scale_x), int(event.y * scale_y))
-        self.adding_new_ref = True
+        # Capture the starting point in UI pixels only.
+        self.rect_start = (event.x, event.y)
+        self._roi_dragging = True
+        self.camera.temp_roi = None
 
     def on_mouse_drag(self, event):
         if self.rect_start:
-            # Get current scales
+            self._roi_dragging = True
             scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
             scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
-            
-            # Map the current mouse position (event.x, event.y) to frame space
-            start_x, start_y = self.rect_start
-            curr_x, curr_y = int(event.x * scale_x), int(event.y * scale_y)
-            
-            # Calculate width and height in frame coordinates
-            width = curr_x - start_x
-            height = curr_y - start_y
-            
-            # Update the temporary ROI in the camera module for the live preview
-            self.camera.set_roi_temp(start_x, start_y, width, height)
 
-    def on_mouse_up(self, event):
-        if self.rect_start:
-            scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
-            scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
-            
             start_x, start_y = self.rect_start
-            end_x, end_y = int(event.x * scale_x), int(event.y * scale_y)
+            curr_x, curr_y = event.x, event.y
+            ui_x, ui_y = min(start_x, curr_x), min(start_y, curr_y)
+            ui_w, ui_h = abs(curr_x - start_x), abs(curr_y - start_y)
             
-            # Calculate the final ROI (ensure width/height are positive)
-            final_x = min(start_x, end_x)
-            final_y = min(start_y, end_y)
-            final_w = abs(end_x - start_x)
-            final_h = abs(end_y - start_y)
+            frame_x = int(ui_x * scale_x)
+            frame_y = int(ui_y * scale_y)
+            frame_w = int(ui_w * scale_x)
+            frame_h = int(ui_h * scale_y)
 
-            if final_w > 5 and final_h > 5:
-                # Apply the final ROI to the camera
-                self.camera.set_roi(final_x, final_y, final_w, final_h)
-                self.pending_roi = (final_x, final_y, final_w, final_h)
-                
-                # Clear the temporary drawing and trigger the name prompt
-                self.camera.temp_roi = None
-                self.prompt_for_reference_name()
-            
-            self.rect_start = None
-            self.adding_new_ref = False
+            self.camera.set_roi_temp(frame_x, frame_y, frame_w, frame_h)
 
     def change_theme(self, name): tm.set_theme(self, name)
 
     def toggle_modbus(self):
-        """Toggle Modbus communication on/off while keeping other components running."""
+        self._prompt_modbus_password()
+
+    def _toggle_modbus_state(self):
+        """Toggle Modbus communication on/off once the password is validated."""
         self.modbus_enabled = not self.modbus_enabled
         if self.modbus_enabled:
             self.modbus_btn.configure(text="🔌 Modbus: ON", bootstyle="success")
@@ -516,6 +723,46 @@ class MainApp(tb.Window):
             self.modbus_btn.configure(text="🔌 Modbus: OFF", bootstyle="danger")
             self.modbus_manager.disconnect()
             self.update_result_ui("Modbus disconnected", "warning")
+
+    def _prompt_modbus_password(self):
+        win = self._create_child_window("Modbus Password", 360, 180, parent=self, resizable=(False, False))
+        tb.Label(win, text="Enter password to change Modbus state:", font=("Helvetica", 11), wraplength=320, justify="center").pack(pady=(15, 5), padx=10)
+
+        password_var = tk.StringVar()
+        password_entry = tb.Entry(win, textvariable=password_var, show="*", font=("Helvetica", 14))
+        password_entry.pack(pady=5, padx=20, fill="x")
+        password_entry.focus_set()
+        win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
+        win.protocol("WM_DELETE_WINDOW", lambda: [self._close_keyboard(), win.destroy()])
+
+        def check_password(event=None):
+            if password_var.get().strip().upper() == "TUNITECH":
+                self._close_keyboard()
+                win.destroy()
+                self._toggle_modbus_state()
+                self._open_modbus_settings_window()
+            else:
+                tb.dialogs.Messagebox.show_error("Incorrect password, please try again.", title="Error", parent=win)
+                password_var.set("")
+                password_entry.focus_set()
+
+        password_entry.bind("<Return>", check_password)
+
+        button_frame = tb.Frame(win)
+        button_frame.pack(pady=(8, 12), padx=20, fill="x")
+        tb.Button(button_frame, text="Enter", bootstyle="success", command=check_password).pack(side="left", expand=True, fill="x", padx=(0, 5))
+        tb.Button(button_frame, text="Cancel", bootstyle="secondary", command=lambda: [self._close_keyboard(), win.destroy()]).pack(side="left", expand=True, fill="x", padx=(5, 0))
+
+        win.after(100, lambda: self.show_virtual_keyboard(password_entry, None, password_var))
+
+    def _open_modbus_settings_window(self):
+        win = self._create_child_window("Modbus Settings", 420, 220, parent=self)
+        tb.Label(win, text="Modbus is now:", font=("Helvetica", 12, "bold")).pack(pady=(20, 8))
+        status_text = "ON" if self.modbus_enabled else "OFF"
+        status_bootstyle = "success" if self.modbus_enabled else "danger"
+        tb.Label(win, text=status_text, font=("Helvetica", 24, "bold"), bootstyle=status_bootstyle).pack(pady=(0, 15))
+        tb.Label(win, text="You can close this window to continue.", font=("Helvetica", 11), wraplength=360, justify="center").pack(pady=(0, 15), padx=10)
+        tb.Button(win, text="Close", bootstyle="primary", command=win.destroy).pack(pady=(0, 10))
 
     def clear_zone(self):
         self.camera.clear_roi()
@@ -602,7 +849,6 @@ class MainApp(tb.Window):
         frame_count = 0
         while self.running:
             # Run OCR only every 15 frames (approx. every 0.5 seconds)
-            # This drastically reduces CPU load
             should_i_ocr = (frame_count % 15 == 0)
             
             img_tk, is_match = self.camera.get_frame(
@@ -612,20 +858,32 @@ class MainApp(tb.Window):
             )
             
             if img_tk:
-                self.camera_queue.put({"type": "frame", "img_tk": img_tk, "is_match": is_match})
+                # Prevent queue buildup by dropping old frames if the GUI is lagging
+                try:
+                    while self.camera_queue.qsize() > 2:
+                        self.camera_queue.get_nowait()
+                    self.camera_queue.put({"type": "frame", "img_tk": img_tk, "is_match": is_match})
+                except queue.Empty:
+                    pass
+
+                if should_i_ocr and self.camera.current_roi and self.camera.expected_text:
+                    status_text = "OK" if is_match else "NOK"
+                    bootstyle = "success" if is_match else "danger"
+                    self.camera_queue.put({"type": "status", "text": status_text, "bootstyle": bootstyle})
             
             frame_count += 1
-            time.sleep(0.01) # Keep camera feed smooth, but allow other tasks
+            time.sleep(0.03) # Lower CPU load while keeping a smooth frame rate
 
     def update_gui_from_queues(self):
         if not self.running: return
 
         # Process camera queue
+        latest_frame = None
         try:
             while True:
                 item = self.camera_queue.get_nowait()
                 if item["type"] == "frame":
-                    self.camera_label.configure(image=item["img_tk"])
+                    latest_frame = item["img_tk"]
                     self.camera_label.image = item["img_tk"]
                 elif item["type"] == "status":
                     self.update_result_ui(item["text"], item["bootstyle"])
@@ -634,6 +892,25 @@ class MainApp(tb.Window):
                 self.camera_queue.task_done()
         except queue.Empty:
             pass
+
+        if latest_frame is not None:
+            self.camera_label.configure(image=latest_frame)
+
+        # Check for OCR test result
+        if self.camera.test_result:
+            detected, match = self.camera.test_result
+            self.camera.test_result = None
+            if self.testing_ocr:
+                if match:
+                    self.update_result_ui(f"Test: PASS - '{detected}'", "success")
+                else:
+                    self.update_result_ui(f"Test: FAIL - '{detected}' vs '{self.camera.expected_text}'", "danger")
+            else:
+                # One-time test result
+                if match:
+                    tb.dialogs.Messagebox.show_info(f"OCR Test Passed: Detected '{detected}' matches expected.", title="Test Result", parent=self)
+                else:
+                    tb.dialogs.Messagebox.show_error(f"OCR Test Failed: Detected '{detected}' does not match expected '{self.camera.expected_text}'.", title="Test Result", parent=self)
 
         # Process Modbus queue
         try:
@@ -649,7 +926,7 @@ class MainApp(tb.Window):
         except queue.Empty:
             pass
 
-        self.after(15, self.update_gui_from_queues)
+        self.after(30, self.update_gui_from_queues)
 
     def _process_plc_inputs(self, plc_inputs):
         # This logic is adapted from the original poll_plc method
