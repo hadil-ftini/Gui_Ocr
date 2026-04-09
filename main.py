@@ -183,7 +183,9 @@ class MainApp(tb.Window):
             self.testing_ocr = False
             self.test_btn.configure(text="Test", bootstyle="success")
             self.camera._run_test_ocr = False
-            self.update_result_ui("OCR Test stopped", "warning")
+            self.camera.clear_roi()
+            self.ref_var.set("")
+            self.update_result_ui("OCR Test stopped and ROI cleared", "warning")
 
     # ─── VIRTUAL KEYBOARD SYSTEM ───
     def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
