@@ -286,9 +286,9 @@ class MainApp(tb.Window):
         self.result_label.grid(row=1, column=0, sticky="ew", pady=10)
        
         self.camera_label.bind("<Configure>", self._on_camera_label_configure)
-        self.camera_label.bind("<Button-1>", lambda e: "break")
-        self.camera_label.bind("<B1-Motion>", lambda e: "break")
-        self.camera_label.bind("<ButtonRelease-1>", lambda e: "break")
+        self.camera_label.bind("<Button-1>", self.on_mouse_down)
+        self.camera_label.bind("<B1-Motion>", self.on_mouse_drag)
+        self.camera_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.rect_start = None
 
     def test_ocr(self):
@@ -764,21 +764,16 @@ class MainApp(tb.Window):
     def on_mouse_up(self, event):
         if not self.rect_start:
             return
-        x1, y1 = self.rect_start
         x2, y2 = event.x, event.y
 
-        # Calculate bounding box in UI coordinates first
+        scale_x = 1 / (self.camera.display_scale_x or 1.0)
+        scale_y = 1 / (self.camera.display_scale_y or 1.0)
+
+        x1, y1 = self.rect_start
         ui_x, ui_y = min(x1, x2), min(y1, y2)
         ui_w, ui_h = abs(x2 - x1), abs(y2 - y1)
-
-        # Use separate scales for X and Y to map UI coordinates back to original frame coordinates
-        scale_x = 1 / getattr(self.camera, 'display_scale_x', self.camera.display_scale)
-        scale_y = 1 / getattr(self.camera, 'display_scale_y', self.camera.display_scale)
-
-        # Map to frame coordinates
         rx, ry = int(ui_x * scale_x), int(ui_y * scale_y)
         rw, rh = int(ui_w * scale_x), int(ui_h * scale_y)
-
 
         self.camera.temp_roi = None
 
@@ -786,6 +781,7 @@ class MainApp(tb.Window):
             if self.adding_new_ref:
                 self.update_result_ui("❌ ROI too small!", "danger")
             self._roi_dragging = False
+            self.rect_start = None
             return
 
         if self.adding_new_ref and self.pending_ref and self._roi_dragging:
@@ -816,6 +812,7 @@ class MainApp(tb.Window):
             self.update_result_ui("ROI updated manually", "info")
 
         self._roi_dragging = False
+        self.rect_start = None
 
     def load_references(self):
         if os.path.exists("references.json"):
@@ -861,7 +858,6 @@ class MainApp(tb.Window):
             self.modbus_write_queue.put({"type": "write_result", "value": RESULT_IDLE})
 
     def on_mouse_down(self, event):
-        # Capture the starting point in UI pixels only.
         self.rect_start = (event.x, event.y)
         self._roi_dragging = True
         self.camera.temp_roi = None
@@ -872,13 +868,13 @@ class MainApp(tb.Window):
             if self.camera.current_roi and self.camera.temp_roi is None:
                 self.camera.clear_roi()
             
-            scale_x = 1 / getattr(self.camera, 'display_scale_x', 1.0)
-            scale_y = 1 / getattr(self.camera, 'display_scale_y', 1.0)
+            scale_x = 1 / (self.camera.display_scale_x or 1.0)
+            scale_y = 1 / (self.camera.display_scale_y or 1.0)
 
-            start_x, start_y = self.rect_start
-            curr_x, curr_y = event.x, event.y
-            ui_x, ui_y = min(start_x, curr_x), min(start_y, curr_y)
-            ui_w, ui_h = abs(curr_x - start_x), abs(curr_y - start_y)
+            x1, y1 = self.rect_start
+            x2, y2 = event.x, event.y
+            ui_x, ui_y = min(x1, x2), min(y1, y2)
+            ui_w, ui_h = abs(x2 - x1), abs(y2 - y1)
             
             frame_x = int(ui_x * scale_x)
             frame_y = int(ui_y * scale_y)

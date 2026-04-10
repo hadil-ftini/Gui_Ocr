@@ -28,6 +28,7 @@ class CameraApp:
         self._last_frame_hash = 0
 
     def start_camera(self, camera_index=1):
+        camera_index=1
         self.cap = cv2.VideoCapture(camera_index)
         # Lower capture resolution for Raspberry Pi performance while keeping sufficient detail
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -129,19 +130,35 @@ class CameraApp:
             x, y, w, h = self.current_roi
             if self.ocr_done:
                 roi_color = (0, 255, 0) if self.is_match else (0, 0, 255)
-                label_text = "OK" if self.is_match else "NOK"
+                top_label_text = "OK" if self.is_match else "NOK"
             else:
                 roi_color = (255, 255, 0)
-                label_text = ""
+                top_label_text = ""
             cv2.rectangle(frame, (x, y), (x + w, y + h), roi_color, 3)
-            if label_text:
-                text_pos = (x, y - 10 if y - 20 > 0 else y + h + 25)
-                text_size, _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-                text_w, text_h = text_size
-                bg_tl = (text_pos[0] - 4, text_pos[1] - text_h - 4)
-                bg_br = (text_pos[0] + text_w + 4, text_pos[1] + 4)
+            if top_label_text:
+                # Draw match state above the ROI when possible
+                label_size, _ = cv2.getTextSize(top_label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+                label_w, label_h = label_size
+                label_x = max(4, min(x, frame.shape[1] - label_w - 4))
+                label_y = y - 10 if y - 20 > 0 else y + h + label_h + 15
+                bg_tl = (label_x - 4, label_y - label_h - 4)
+                bg_br = (label_x + label_w + 4, label_y + 4)
                 cv2.rectangle(frame, bg_tl, bg_br, (0, 0, 0), cv2.FILLED)
-                cv2.putText(frame, label_text, (text_pos[0], text_pos[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.8, roi_color, 2, cv2.LINE_AA)
+                cv2.putText(frame, top_label_text, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, roi_color, 2, cv2.LINE_AA)
+
+            if self.last_detected_text:
+                # Draw the detected OCR text below the ROI box
+                content_text = self.last_detected_text
+                text_size, _ = cv2.getTextSize(content_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+                text_w, text_h = text_size
+                text_x = max(4, min(x, frame.shape[1] - text_w - 4))
+                text_y = y + h + text_h + 20
+                if text_y + 4 > frame.shape[0]:
+                    text_y = y - 10
+                bg_tl = (text_x - 4, text_y - text_h - 4)
+                bg_br = (text_x + text_w + 4, text_y + 4)
+                cv2.rectangle(frame, bg_tl, bg_br, (0, 0, 0), cv2.FILLED)
+                cv2.putText(frame, content_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
 
         if self.temp_roi:
             tx, ty, tw, th = self.temp_roi

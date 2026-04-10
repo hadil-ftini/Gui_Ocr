@@ -12,27 +12,39 @@
         "nok_count": 0
     },
     {
-        "name": "hqsd7",
-        "expected_text": "de3",
-        "roi": [
-            70,
-            225,
-            187,
-            198
-        ],
-        "ok_count": 0,
-        "nok_count": 4
-    },
-    {
-        "name": "hadil",
+        "name": "hadiltt",
         "expected_text": "r4",
         "roi": [
-            105,
-            75,
             248,
-            294
+            188,
+            222,
+            214
         ],
         "ok_count": 0,
-        "nok_count": 1
+        "nok_count": 2
+    },
+    {
+        "name": "test",
+        "expected_text": "jeu",
+        "roi": [
+            192,
+            357,
+            75,
+            57
+        ],
+        "ok_count": 6,
+        "nok_count": 3
+    },
+    {
+        "name": "23",
+        "expected_text": "cartes",
+        "roi": [
+            207,
+            358,
+            144,
+            54
+        ],
+        "ok_count": 1,
+        "nok_count": 0
     }
 ]
