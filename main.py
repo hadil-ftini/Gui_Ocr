@@ -291,11 +291,17 @@ class MainApp(tb.Window):
         self.rect_start = None
 
     def test_ocr(self):
+        self._run_selected_reference_test(show_dialog_on_error=True)
+
+    def _run_selected_reference_test(self, show_dialog_on_error=False):
+        """Run OCR test on currently selected reference and write result to PLC reg 16."""
         ref_name = self.ref_var.get().strip()
         selected_ref = next((r for r in self.references if r['name'] == ref_name), None)
         if not selected_ref:
-            tb.dialogs.Messagebox.show_warning("Please select a reference first.", title="Reference Required", parent=self)
-            return
+            self.update_result_ui("FAIL: No Active Reference", "danger")
+            if show_dialog_on_error:
+                tb.dialogs.Messagebox.show_warning("Please select a reference first.", title="Reference Required", parent=self)
+            return False
 
         self.camera.set_roi(*selected_ref['roi'])
         self.camera.expected_text = selected_ref['expected_text']
@@ -304,8 +310,10 @@ class MainApp(tb.Window):
         self.camera.ocr_done = False
 
         if not self.camera.current_roi or not self.camera.expected_text:
-            tb.dialogs.Messagebox.show_warning("The selected reference has no ROI or expected text.", title="Reference Required", parent=self)
-            return
+            self.update_result_ui("FAIL: No Active Reference", "danger")
+            if show_dialog_on_error:
+                tb.dialogs.Messagebox.show_warning("The selected reference has no ROI or expected text.", title="Reference Required", parent=self)
+            return False
 
         detected, match = self.camera.perform_ocr_once()
         if match:
@@ -315,6 +323,7 @@ class MainApp(tb.Window):
             self.update_result_ui("NOK", "danger")
             self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
         self._update_reference_counters(match)
+        return True
 
     # ─── VIRTUAL KEYBOARD SYSTEM ───
     def show_virtual_keyboard(self, entry, next_widget=None, kb_var=None):
@@ -1105,6 +1114,7 @@ class MainApp(tb.Window):
             return
 
         received_ref = plc_inputs.get('reference', '').strip()
+        start_test = plc_inputs.get('start_test')
         resolved_ref = self._resolve_reference_from_plc(received_ref) if received_ref else None
 
         # Show raw PLC value only when it cannot be resolved yet.
@@ -1122,7 +1132,11 @@ class MainApp(tb.Window):
             self.on_ref_selected(None)
             self.update_result_ui(f"PLC selected: {resolved_ref['name']}", "info")
 
-        # PLC input now only selects reference. OCR test/result is manual via Test button.
+        # PLC start-test bit triggers same OCR flow as GUI Test button.
+        if start_test:
+            self._run_selected_reference_test(show_dialog_on_error=False)
+            # Acknowledge reg 15 back to 0 so simulator start button can be pressed again.
+            self.modbus_write_queue.put({"type": "acknowledge_start"})
 
     def _on_main_window_configure(self, event):
         # Dynamically scale result_label font based on window height

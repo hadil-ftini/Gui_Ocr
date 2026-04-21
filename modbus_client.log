@@ -3941,3 +3941,11 @@
 2026-04-21 17:37:47,070 [ERROR] ModbusManager: Read error at reg 0: Modbus Error: [Input/Output] [WinError 10054] An existing connection was forcibly closed by the remote host
 2026-04-21 17:37:49,096 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
 2026-04-21 17:37:49,315 [INFO] ModbusManager: Disconnected from PLC
+2026-04-21 18:32:48,224 [INFO] ModbusManager: Connected to Modbus PLC at 127.0.0.1:5502
+2026-04-21 18:36:39,653 [INFO] ModbusManager: Disconnected from PLC
+2026-04-21 18:44:12,993 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-04-21 18:44:16,055 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-04-21 18:44:18,086 [INFO] ModbusManager: Connected to Modbus PLC at 127.0.0.1:5502
+2026-04-21 18:46:00,921 [ERROR] ModbusManager: Read error at reg 0: Modbus Error: [Input/Output] [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-04-21 18:46:02,960 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-04-21 18:46:03,688 [INFO] ModbusManager: Disconnected from PLC

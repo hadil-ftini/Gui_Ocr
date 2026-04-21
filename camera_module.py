@@ -136,25 +136,23 @@ class CameraApp:
                 top_label_text = ""
             cv2.rectangle(frame, (x, y), (x + w, y + h), roi_color, 3)
             if top_label_text:
-                # Draw match state above the ROI when possible
+                # Draw match state above the ROI box
                 label_size, _ = cv2.getTextSize(top_label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
                 label_w, label_h = label_size
                 label_x = max(4, min(x, frame.shape[1] - label_w - 4))
-                label_y = y - 10 if y - 20 > 0 else y + h + label_h + 15
+                label_y = max(label_h + 8, y - 10)
                 bg_tl = (label_x - 4, label_y - label_h - 4)
                 bg_br = (label_x + label_w + 4, label_y + 4)
                 cv2.rectangle(frame, bg_tl, bg_br, (0, 0, 0), cv2.FILLED)
                 cv2.putText(frame, top_label_text, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, roi_color, 2, cv2.LINE_AA)
 
             if self.last_detected_text:
-                # Draw the detected OCR text below the ROI box
+                # Draw detected OCR content under the ROI box
                 content_text = self.last_detected_text
                 text_size, _ = cv2.getTextSize(content_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
                 text_w, text_h = text_size
                 text_x = max(4, min(x, frame.shape[1] - text_w - 4))
-                text_y = y + h + text_h + 20
-                if text_y + 4 > frame.shape[0]:
-                    text_y = y - 10
+                text_y = min(frame.shape[0] - 8, y + h + text_h + 20)
                 bg_tl = (text_x - 4, text_y - text_h - 4)
                 bg_br = (text_x + text_w + 4, text_y + 4)
                 cv2.rectangle(frame, bg_tl, bg_br, (0, 0, 0), cv2.FILLED)

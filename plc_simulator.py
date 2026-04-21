@@ -110,6 +110,8 @@ class PLCHmi(tb.Window):
                    command=lambda: self.run_recipe('test')).grid(row=1, column=0, sticky="ew", pady=4)
         ttk.Button(btn_container, text="Ref 'TIA'", bootstyle="outline-primary",
                    command=lambda: self.run_recipe('TIA')).grid(row=2, column=0, sticky="ew", pady=4)
+        ttk.Button(btn_container, text="START TEST (reg 15 = 1)", bootstyle="warning",
+                   command=self.trigger_start_test).grid(row=3, column=0, sticky="ew", pady=(10, 4))
 
         # Live Status
         status_frame = ttk.LabelFrame(container, text="Live Register Status", padding=15)
@@ -139,6 +141,10 @@ class PLCHmi(tb.Window):
         self.plc.set_reference(ref_name)
         # Reference selection only; GUI test remains manual from operator side.
         self.plc.datablock.setValues(REG_START_TEST, [0])
+
+    def trigger_start_test(self):
+        self.plc.logger.info("--- HMI: Start Test button pressed (reg 15 = 1) ---")
+        self.plc.datablock.setValues(REG_START_TEST, [1])
 
     def update_ui(self):
         ref = self.plc.get_reference()
