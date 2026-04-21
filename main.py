@@ -5,13 +5,12 @@ from PIL import Image, ImageTk
 import camera_module as cam
 import theme_module as tm
 import modbus_manager as mm
-from modbus_manager import RESULT_IDLE, RESULT_OK, RESULT_NOK
+from modbus_manager import RESULT_OK, RESULT_NOK, RESULT_IDLE
 import json
 import os
 import time
-import threading # Added import
-import queue # Added import
-
+import threading
+import queue
 class MainApp(tb.Window):
     def __init__(self):
         super().__init__(themename="superhero")
@@ -311,8 +310,10 @@ class MainApp(tb.Window):
         detected, match = self.camera.perform_ocr_once()
         if match:
             self.update_result_ui("OK", "success")
+            self.modbus_write_queue.put({"type": "write_result", "value": RESULT_OK})
         else:
             self.update_result_ui("NOK", "danger")
+            self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
         self._update_reference_counters(match)
 
     # ─── VIRTUAL KEYBOARD SYSTEM ───
@@ -840,6 +841,25 @@ class MainApp(tb.Window):
     def update_ref_combo(self):
         self.ref_combo['values'] = [r['name'] for r in self.references]
 
+    def _resolve_reference_from_plc(self, received_ref):
+        """
+        Resolve PLC-provided reference name.
+        1) exact match, 2) unique prefix match (to handle partial/slow writes).
+        """
+        if not received_ref:
+            return None
+
+        cleaned = received_ref.strip()
+        lowered = cleaned.lower()
+        exact = next((r for r in self.references if r["name"].strip().lower() == lowered), None)
+        if exact:
+            return exact
+
+        prefix_matches = [r for r in self.references if r["name"].strip().lower().startswith(lowered)]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+        return None
+
     def on_ref_selected(self, event):
         ref_name = self.ref_var.get()
         ref_data = next((r for r in self.references if r["name"] == ref_name), None)
@@ -1064,7 +1084,6 @@ class MainApp(tb.Window):
         if latest_frame is not None and self.main_camera_display:
             self.camera_label.configure(image=latest_frame)
 
-        # Check for OCR test result
         # Process Modbus queue
         try:
             while True:
@@ -1082,37 +1101,28 @@ class MainApp(tb.Window):
         self.after(30, self.update_gui_from_queues)
 
     def _process_plc_inputs(self, plc_inputs):
-        # This logic is adapted from the original poll_plc method
-        # Check for reference change from PLC
-        if plc_inputs.get('reference') and plc_inputs['reference'] != self.last_plc_ref:
-            self.last_plc_ref = plc_inputs['reference']
-            ref_data = next((r for r in self.references if r['name'] == self.last_plc_ref), None)
-            if ref_data:
-                self.ref_var.set(self.last_plc_ref)
-                self.on_ref_selected(None) 
-            else:
-                self.update_result_ui(f"PLC Error: Ref '{self.last_plc_ref}' not found", "danger")
-                self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
-                if plc_inputs.get('start_cycle'):
-                    self.modbus_write_queue.put({"type": "acknowledge_start"})
-        
-        # Check for start cycle trigger
-        if plc_inputs.get('start_cycle'):
-            print("PLC triggered test start.")
-            if not self.camera.current_roi or not self.camera.expected_text:
-                self.update_result_ui("FAIL: No Active Reference", "danger")
-                self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
-            else:
-                # Use the latest match status from the camera object
-                if self.camera.is_match:
-                    self.update_result_ui("OK", "success")
-                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_OK})
-                else:
-                    self.update_result_ui("NOK", "danger")
-                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
-            
-            # Acknowledge that the cycle has been processed
-            self.modbus_write_queue.put({"type": "acknowledge_start"})
+        if not plc_inputs:
+            return
+
+        received_ref = plc_inputs.get('reference', '').strip()
+        resolved_ref = self._resolve_reference_from_plc(received_ref) if received_ref else None
+
+        # Show raw PLC value only when it cannot be resolved yet.
+        if received_ref and not resolved_ref:
+            self.ref_var.set(received_ref)
+
+        # Update combobox selection when a valid/uniquely-resolved ref arrives.
+        # Re-apply if current selected reference does not match, even when same PLC ref repeats.
+        if resolved_ref and (
+            resolved_ref['name'] != self.last_plc_ref
+            or self.selected_reference_name != resolved_ref['name']
+        ):
+            self.last_plc_ref = resolved_ref['name']
+            self.ref_var.set(resolved_ref['name'])
+            self.on_ref_selected(None)
+            self.update_result_ui(f"PLC selected: {resolved_ref['name']}", "info")
+
+        # PLC input now only selects reference. OCR test/result is manual via Test button.
 
     def _on_main_window_configure(self, event):
         # Dynamically scale result_label font based on window height

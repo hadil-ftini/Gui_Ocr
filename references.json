@@ -12,16 +12,16 @@
         "nok_count": 0
     },
     {
-        "name": "hadiltt",
-        "expected_text": "r4",
+        "name": "hadil",
+        "expected_text": "cartes",
         "roi": [
-            248,
-            188,
-            222,
-            214
+            392,
+            347,
+            211,
+            96
         ],
-        "ok_count": 0,
-        "nok_count": 2
+        "ok_count": 1,
+        "nok_count": 8
     },
     {
         "name": "test",
@@ -32,8 +32,8 @@
             75,
             57
         ],
-        "ok_count": 6,
-        "nok_count": 3
+        "ok_count": 7,
+        "nok_count": 5
     },
     {
         "name": "23",
@@ -45,6 +45,18 @@
             54
         ],
         "ok_count": 1,
+        "nok_count": 0
+    },
+    {
+        "name": "test",
+        "expected_text": "jeu",
+        "roi": [
+            231,
+            364,
+            92,
+            78
+        ],
+        "ok_count": 0,
         "nok_count": 0
     }
 ]
