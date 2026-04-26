@@ -68,18 +68,29 @@ class MainApp(tb.Window):
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
 
-        # Launch near full screen but keep margin, including on small displays (Raspberry/VNC).
-        win_w = int(screen_w * 0.96)
-        win_h = int(screen_h * 0.90)
+        # 7-inch panel profile: 800x480 active resolution.
+        # Use almost the whole area to keep controls visible on Raspberry displays.
+        is_7inch_profile = screen_w <= 820 and screen_h <= 520
+        if is_7inch_profile:
+            win_w = screen_w
+            win_h = screen_h
+        else:
+            # Larger displays keep small margins.
+            win_w = int(screen_w * 0.96)
+            win_h = int(screen_h * 0.90)
         win_w = min(win_w, screen_w)
         win_h = min(win_h, screen_h)
         pos_x = max(0, (screen_w - win_w) // 2)
         pos_y = max(0, (screen_h - win_h) // 2)
 
         self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
-        # Keep minimum size proportional to screen to avoid oversized minimum constraints.
-        min_w = max(640, min(900, int(screen_w * 0.70)))
-        min_h = max(420, min(620, int(screen_h * 0.70)))
+        # Keep lower minimums on 800x480 so window never exceeds screen constraints.
+        if is_7inch_profile:
+            min_w = 700
+            min_h = 420
+        else:
+            min_w = max(640, min(900, int(screen_w * 0.70)))
+            min_h = max(420, min(620, int(screen_h * 0.70)))
         self.minsize(min_w, min_h)
         self.resizable(True, True)
 
