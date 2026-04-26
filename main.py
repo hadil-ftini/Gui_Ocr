@@ -68,16 +68,19 @@ class MainApp(tb.Window):
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
 
-        # Launch at ~92% of screen size and center it.
-        win_w = max(1024, int(screen_w * 0.92))
-        win_h = max(680, int(screen_h * 0.92))
+        # Launch near full screen but keep margin, including on small displays (Raspberry/VNC).
+        win_w = int(screen_w * 0.96)
+        win_h = int(screen_h * 0.90)
         win_w = min(win_w, screen_w)
         win_h = min(win_h, screen_h)
         pos_x = max(0, (screen_w - win_w) // 2)
         pos_y = max(0, (screen_h - win_h) // 2)
 
         self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
-        self.minsize(1024, 680)
+        # Keep minimum size proportional to screen to avoid oversized minimum constraints.
+        min_w = max(640, min(900, int(screen_w * 0.70)))
+        min_h = max(420, min(620, int(screen_h * 0.70)))
+        self.minsize(min_w, min_h)
         self.resizable(True, True)
 
     def on_closing(self):
