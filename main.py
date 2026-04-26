@@ -15,9 +15,7 @@ class MainApp(tb.Window):
     def __init__(self):
         super().__init__(themename="superhero")
         self.title("Check Ref - Tunitech")
-        width = self.winfo_screenwidth()
-        height = self.winfo_screenheight()
-        self.geometry(f"{width}x{height}+0+0")
+        self._configure_responsive_window()
        
         self.running = True
         self.references = self.load_references()
@@ -64,7 +62,23 @@ class MainApp(tb.Window):
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_main_window_configure) # Bind main window configure event
-        self.after(100, lambda: self.state('zoomed')) # Maximize the window after a short delay
+
+    def _configure_responsive_window(self):
+        """Initialize a resizable window that adapts to current display size."""
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+
+        # Launch at ~92% of screen size and center it.
+        win_w = max(1024, int(screen_w * 0.92))
+        win_h = max(680, int(screen_h * 0.92))
+        win_w = min(win_w, screen_w)
+        win_h = min(win_h, screen_h)
+        pos_x = max(0, (screen_w - win_w) // 2)
+        pos_y = max(0, (screen_h - win_h) // 2)
+
+        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        self.minsize(1024, 680)
+        self.resizable(True, True)
 
     def on_closing(self):
         """Handles graceful shutdown of the application."""
