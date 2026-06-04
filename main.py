@@ -28,8 +28,9 @@ class MainApp(tb.Window):
         self.nok_counter_var = tk.IntVar(value=0)
 
         # -- Modbus Client Setup --
-        # IMPORTANT: Set the correct IP address for your PLC here
-        self.modbus_manager = mm.ModbusManager(host="127.0.0.1") 
+        # IMPORTANT: Set the correct IP address and port for your PLC here
+        # The PLC simulator runs on port 5502 by default, so connect there.
+        self.modbus_manager = mm.ModbusManager(host="127.0.0.1", port=5502)
         self.last_poll_time = 0
         self.poll_interval = 1  # Poll PLC every 1 second
         self.last_plc_ref = ""
@@ -60,6 +61,9 @@ class MainApp(tb.Window):
         self._start_background_tasks() # New method to start threads
         self.update_gui_from_queues() # Start the GUI update loop
 
+        # Track whether an OCR test is currently running (prevent concurrent tests)
+        self._test_in_progress = False
+
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_main_window_configure) # Bind main window configure event
 
@@ -67,10 +71,23 @@ class MainApp(tb.Window):
         """Initialize a resizable window that adapts to current display size."""
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-
-        # 7-inch panel profile: 800x480 active resolution.
-        # Use almost the whole area to keep controls visible on Raspberry displays.
+        # Exact 7-inch panel profile: 800x480 (15:9)
+        # If the display is exactly 800x480, use those exact dimensions and lock
+        # the window to avoid scaling issues on small embedded panels.
+        is_exact_800x480 = (screen_w == 800 and screen_h == 480)
+        # Fallback: small-panel profile for slightly different embedded sizes
         is_7inch_profile = screen_w <= 820 and screen_h <= 520
+        if is_exact_800x480:
+            win_w, win_h = 800, 480
+            pos_x, pos_y = 0, 0
+            # Use a fixed, non-resizable window to match native panel behavior
+            self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+            self.minsize(win_w, win_h)
+            try:
+                self.resizable(False, False)
+            except Exception:
+                pass
+            return
         if is_7inch_profile:
             win_w = screen_w
             win_h = screen_h
@@ -1127,6 +1144,14 @@ class MainApp(tb.Window):
                 item = self.modbus_queue.get_nowait()
                 if item["type"] == "status":
                     self.update_result_ui(item["text"], item["bootstyle"])
+                elif item["type"] == "plc_test_result":
+                    match = item.get("data", {}).get("match")
+                    if match:
+                        self.update_result_ui("OK", "success")
+                    else:
+                        self.update_result_ui("NOK", "danger")
+                    # Update counters for selected ref
+                    self._update_reference_counters(match)
                 elif item["type"] == "plc_inputs":
                     self._process_plc_inputs(item["data"])
                 elif item["type"] == "error":
@@ -1162,7 +1187,8 @@ class MainApp(tb.Window):
 
         # PLC start-test bit triggers same OCR flow as GUI Test button.
         if start_test:
-            self._run_selected_reference_test(show_dialog_on_error=False)
+            # Start the OCR test in a background thread to avoid blocking the GUI.
+            self._start_test_thread()
             # Acknowledge reg 15 back to 0 so simulator start button can be pressed again.
             self.modbus_write_queue.put({"type": "acknowledge_start"})
 
@@ -1179,6 +1205,43 @@ class MainApp(tb.Window):
         if event.width > 0 and event.height > 0:
             self.camera_width = event.width
             self.camera_height = event.height
+
+    def _start_test_thread(self):
+        """Start OCR test in background thread and deliver result back to GUI via queue."""
+        if self._test_in_progress:
+            return
+
+        # Validate selection on main thread before starting
+        ref_name = self.ref_var.get().strip()
+        selected_ref = next((r for r in self.references if r['name'] == ref_name), None)
+        if not selected_ref:
+            self.update_result_ui("FAIL: No Active Reference", "danger")
+            return
+
+        self._test_in_progress = True
+        self.update_result_ui("Running...", "secondary")
+
+        def worker():
+            try:
+                # Ensure camera is configured for this reference
+                self.camera.set_roi(*selected_ref['roi'])
+                self.camera.expected_text = selected_ref['expected_text']
+                detected, match = self.camera.perform_ocr_once()
+
+                # Send result back to main thread via queue for safe UI updates
+                self.modbus_queue.put({"type": "plc_test_result", "data": {"match": match}})
+
+                # Queue write to PLC result register
+                if match:
+                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_OK})
+                else:
+                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
+            except Exception as e:
+                self.modbus_queue.put({"type": "status", "text": f"Test error: {e}", "bootstyle": "danger"})
+            finally:
+                self._test_in_progress = False
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 

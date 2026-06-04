@@ -17,7 +17,7 @@ RESULT_NOK = 0
 RESULT_IDLE = 2
 
 class ModbusManager:
-    def __init__(self, host='192.168.0.1', port=502, timeout=5):
+    def __init__(self, host='198.168.0.3', port=502, timeout=5):
         self.logger = logging.getLogger('ModbusManager')
         logging.basicConfig(level=logging.INFO,
                             format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',

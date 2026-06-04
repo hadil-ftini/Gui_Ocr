@@ -13,15 +13,15 @@
     },
     {
         "name": "hadil",
-        "expected_text": "cartes",
+        "expected_text": "coffee",
         "roi": [
-            392,
-            347,
-            211,
-            96
+            246,
+            168,
+            57,
+            33
         ],
-        "ok_count": 1,
-        "nok_count": 13
+        "ok_count": 3,
+        "nok_count": 23
     },
     {
         "name": "test",
@@ -33,7 +33,7 @@
             57
         ],
         "ok_count": 7,
-        "nok_count": 7
+        "nok_count": 9
     },
     {
         "name": "23",
@@ -55,6 +55,18 @@
             364,
             92,
             78
+        ],
+        "ok_count": 0,
+        "nok_count": 0
+    },
+    {
+        "name": "tes",
+        "expected_text": "gg",
+        "roi": [
+            241,
+            175,
+            198,
+            36
         ],
         "ok_count": 0,
         "nok_count": 0

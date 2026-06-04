@@ -29,7 +29,7 @@ class CameraApp:
 
     def start_camera(self, camera_index=1):
         camera_index=1
-        self.cap = cv2.VideoCapture(1)
+        self.cap = cv2.VideoCapture(0)
         # Lower capture resolution for Raspberry Pi performance while keeping sufficient detail
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
