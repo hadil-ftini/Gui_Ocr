@@ -282,47 +282,92 @@ class MainApp(tb.Window):
         status_font = self._responsive_font(11)
         button_pad = (6, 4) if small else (4, 2)
 
-        try:
-            logo_img = Image.open("logo.png")
-            aspect_ratio = logo_img.width / logo_img.height
-            new_height = 50
-            new_width = int(new_height * aspect_ratio)
-            logo_img = logo_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            self.logo_tk = ImageTk.PhotoImage(logo_img)
-            self.logo_label = tb.Label(self.header, image=self.logo_tk)
-            self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
-        except:
-            tb.Label(self.header, text="TUNITECH", font=self._responsive_font(18, True)).grid(row=0, column=0, padx=15, pady=8, sticky="w")
-        try:
-            logo2_img = Image.open("logo2.png")
-            aspect_ratio2 = logo2_img.width / logo2_img.height
-            new_height2 = 50 
-            new_width2 = int(new_height2 * aspect_ratio2)
-            logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
-            self.logo2_tk = ImageTk.PhotoImage(logo2_img)
-            self.logo2_label = tb.Label(self.header, image=self.logo2_tk)
-            # Place the right logo after the Test button
-            self.logo2_label.grid(row=0, column=6, padx=15, pady=8, sticky="e")
-        except Exception as e:
-            print(f"Logo2 not found: {e}")
-        # Modbus Toggle Button
-        self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus,
-                                    padding=button_pad)
-        self.modbus_btn.grid(row=0, column=4, padx=10 if small else 15, pady=8, sticky="e")
+        if small:
+            top_bar = tb.Frame(self.header, bootstyle="light")
+            top_bar.pack(fill="x", padx=6, pady=(4, 2))
 
-        # Test OCR Button beside Modbus
-        self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr,
-                                  padding=button_pad)
-        self.test_btn.grid(row=0, column=5, padx=10 if small else 15, pady=8, sticky="e")
-        
-        # Reference combobox to select active reference
-        self.ref_var = tk.StringVar()
-        self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
-                                     values=[r['name'] for r in self.references],
-                                     state="readonly", width=24 if small else 30)
-        self.ref_combo.configure(font=self._responsive_font(10))
-        self.ref_combo.grid(row=0, column=2, padx=15, pady=10, sticky="e")
-        self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
+            try:
+                logo_img = Image.open("logo.png")
+                aspect_ratio = logo_img.width / logo_img.height
+                new_height = 36
+                new_width = max(70, int(new_height * aspect_ratio))
+                logo_img = logo_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                self.logo_tk = ImageTk.PhotoImage(logo_img)
+                self.logo_label = tb.Label(top_bar, image=self.logo_tk, bootstyle="light")
+                self.logo_label.pack(side="left")
+            except Exception:
+                self.logo_label = tb.Label(top_bar, text="TUNITECH", font=self._responsive_font(12, True), bootstyle="light")
+                self.logo_label.pack(side="left")
+
+            try:
+                logo2_img = Image.open("logo2.png")
+                aspect_ratio2 = logo2_img.width / logo2_img.height
+                new_height2 = 36
+                new_width2 = max(70, int(new_height2 * aspect_ratio2))
+                logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
+                self.logo2_tk = ImageTk.PhotoImage(logo2_img)
+                self.logo2_label = tb.Label(top_bar, image=self.logo2_tk, bootstyle="light")
+                self.logo2_label.pack(side="right")
+            except Exception as e:
+                print(f"Logo2 not found: {e}")
+
+            controls = tb.Frame(self.header, bootstyle="light")
+            controls.pack(fill="x", padx=6, pady=(0, 4))
+
+            self.ref_var = tk.StringVar()
+            self.ref_combo = tb.Combobox(controls, textvariable=self.ref_var,
+                                         values=[r['name'] for r in self.references],
+                                         state="readonly", width=18)
+            self.ref_combo.configure(font=self._responsive_font(9))
+            self.ref_combo.pack(side="left", fill="x", expand=True, padx=(0, 4))
+            self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
+
+            self.modbus_btn = tb.Button(controls, text="Modbus", bootstyle="success", command=self.toggle_modbus,
+                                        padding=(3, 2))
+            self.modbus_btn.pack(side="right", padx=(2, 2))
+            self.test_btn = tb.Button(controls, text="Test", bootstyle="success", command=self.test_ocr,
+                                      padding=(3, 2))
+            self.test_btn.pack(side="right", padx=(2, 2))
+        else:
+            try:
+                logo_img = Image.open("logo.png")
+                aspect_ratio = logo_img.width / logo_img.height
+                new_height = 50
+                new_width = int(new_height * aspect_ratio)
+                logo_img = logo_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                self.logo_tk = ImageTk.PhotoImage(logo_img)
+                self.logo_label = tb.Label(self.header, image=self.logo_tk)
+                self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
+            except Exception:
+                self.logo_label = tb.Label(self.header, text="TUNITECH", font=self._responsive_font(18, True))
+                self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
+            try:
+                logo2_img = Image.open("logo2.png")
+                aspect_ratio2 = logo2_img.width / logo2_img.height
+                new_height2 = 50
+                new_width2 = int(new_height2 * aspect_ratio2)
+                logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
+                self.logo2_tk = ImageTk.PhotoImage(logo2_img)
+                self.logo2_label = tb.Label(self.header, image=self.logo2_tk)
+                self.logo2_label.grid(row=0, column=6, padx=15, pady=8, sticky="e")
+            except Exception as e:
+                print(f"Logo2 not found: {e}")
+
+            self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus,
+                                        padding=button_pad)
+            self.modbus_btn.grid(row=0, column=4, padx=10 if small else 15, pady=8, sticky="e")
+
+            self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr,
+                                      padding=button_pad)
+            self.test_btn.grid(row=0, column=5, padx=10 if small else 15, pady=8, sticky="e")
+
+            self.ref_var = tk.StringVar()
+            self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
+                                         values=[r['name'] for r in self.references],
+                                         state="readonly", width=24 if small else 30)
+            self.ref_combo.configure(font=self._responsive_font(10))
+            self.ref_combo.grid(row=0, column=2, padx=15, pady=10, sticky="e")
+            self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
 
         # ─── Sidebar ───
         self.sidebar = tb.Frame(self, bootstyle="dark")
