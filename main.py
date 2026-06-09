@@ -276,6 +276,10 @@ class MainApp(tb.Window):
         self.header.columnconfigure(6, weight=0)
 
         small = self.is_small_panel
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(project_dir, "logo.png")
+        logo2_path = os.path.join(project_dir, "logo2.png")
+
         header_button_font = self._responsive_font(10, True)
         header_label_font = self._responsive_font(16, True)
         sidebar_label_font = self._responsive_font(11, True)
@@ -287,9 +291,9 @@ class MainApp(tb.Window):
             top_bar.pack(fill="x", padx=6, pady=(4, 2))
 
             try:
-                logo_img = Image.open("logo.png")
+                logo_img = Image.open(logo_path)
                 aspect_ratio = logo_img.width / logo_img.height
-                new_height = 36
+                new_height = 28
                 new_width = max(70, int(new_height * aspect_ratio))
                 logo_img = logo_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 self.logo_tk = ImageTk.PhotoImage(logo_img)
@@ -300,9 +304,9 @@ class MainApp(tb.Window):
                 self.logo_label.pack(side="left")
 
             try:
-                logo2_img = Image.open("logo2.png")
+                logo2_img = Image.open(logo2_path)
                 aspect_ratio2 = logo2_img.width / logo2_img.height
-                new_height2 = 36
+                new_height2 = 28
                 new_width2 = max(70, int(new_height2 * aspect_ratio2))
                 logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
                 self.logo2_tk = ImageTk.PhotoImage(logo2_img)
@@ -330,7 +334,7 @@ class MainApp(tb.Window):
             self.test_btn.pack(side="right", padx=(2, 2))
         else:
             try:
-                logo_img = Image.open("logo.png")
+                logo_img = Image.open(logo_path)
                 aspect_ratio = logo_img.width / logo_img.height
                 new_height = 50
                 new_width = int(new_height * aspect_ratio)
@@ -342,9 +346,9 @@ class MainApp(tb.Window):
                 self.logo_label = tb.Label(self.header, text="TUNITECH", font=self._responsive_font(18, True))
                 self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
             try:
-                logo2_img = Image.open("logo2.png")
+                logo2_img = Image.open(logo2_path)
                 aspect_ratio2 = logo2_img.width / logo2_img.height
-                new_height2 = 50
+                new_height2 = 42 if small else 50
                 new_width2 = int(new_height2 * aspect_ratio2)
                 logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
                 self.logo2_tk = ImageTk.PhotoImage(logo2_img)
