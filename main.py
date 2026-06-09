@@ -15,7 +15,9 @@ class MainApp(tb.Window):
     def __init__(self):
         super().__init__(themename="superhero")
         self.title("Check Ref - Tunitech")
+        self.is_small_panel = False
         self._configure_responsive_window()
+        self.is_small_panel = self._is_small_panel_profile()
        
         self.running = True
         self.references = self.load_references()
@@ -66,6 +68,18 @@ class MainApp(tb.Window):
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_main_window_configure) # Bind main window configure event
+
+    def _is_small_panel_profile(self):
+        """Return True for Raspberry Pi / 7-inch style displays."""
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        return (screen_w == 800 and screen_h == 480) or (screen_w <= 820 and screen_h <= 520)
+
+    def _responsive_font(self, base_size, bold=False):
+        """Scale fonts for small embedded panels and touch usage."""
+        scale = 1.12 if self.is_small_panel else 1.0
+        weight = "bold" if bold else "normal"
+        return ("Helvetica", max(9, int(base_size * scale)), weight)
 
     def _configure_responsive_window(self):
         """Initialize a resizable window that adapts to current display size."""
@@ -255,6 +269,18 @@ class MainApp(tb.Window):
         self.header = tb.Frame(self, bootstyle="light")
         self.header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
         self.header.columnconfigure(1, weight=1) # Spacer column
+        self.header.columnconfigure(2, weight=1)
+        self.header.columnconfigure(3, weight=0)
+        self.header.columnconfigure(4, weight=0)
+        self.header.columnconfigure(5, weight=0)
+        self.header.columnconfigure(6, weight=0)
+
+        small = self.is_small_panel
+        header_button_font = self._responsive_font(10, True)
+        header_label_font = self._responsive_font(16, True)
+        sidebar_label_font = self._responsive_font(11, True)
+        status_font = self._responsive_font(11)
+        button_pad = (6, 4) if small else (4, 2)
 
         try:
             logo_img = Image.open("logo.png")
@@ -266,7 +292,7 @@ class MainApp(tb.Window):
             self.logo_label = tb.Label(self.header, image=self.logo_tk)
             self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
         except:
-            tb.Label(self.header, text="TUNITECH", font=("Helvetica", 22, "bold")).grid(row=0, column=0, padx=15, pady=8, sticky="w")
+            tb.Label(self.header, text="TUNITECH", font=self._responsive_font(18, True)).grid(row=0, column=0, padx=15, pady=8, sticky="w")
         try:
             logo2_img = Image.open("logo2.png")
             aspect_ratio2 = logo2_img.width / logo2_img.height
@@ -280,35 +306,41 @@ class MainApp(tb.Window):
         except Exception as e:
             print(f"Logo2 not found: {e}")
         # Modbus Toggle Button
-        self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus)
-        self.modbus_btn.grid(row=0, column=4, padx=15, pady=10, sticky="e")
+        self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus,
+                                    padding=button_pad)
+        self.modbus_btn.grid(row=0, column=4, padx=10 if small else 15, pady=8, sticky="e")
 
         # Test OCR Button beside Modbus
-        self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr)
-        self.test_btn.grid(row=0, column=5, padx=15, pady=10, sticky="e")
+        self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr,
+                                  padding=button_pad)
+        self.test_btn.grid(row=0, column=5, padx=10 if small else 15, pady=8, sticky="e")
         
         # Reference combobox to select active reference
         self.ref_var = tk.StringVar()
         self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
                                      values=[r['name'] for r in self.references],
-                                     state="readonly", width=30)
+                                     state="readonly", width=24 if small else 30)
+        self.ref_combo.configure(font=self._responsive_font(10))
         self.ref_combo.grid(row=0, column=2, padx=15, pady=10, sticky="e")
         self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
 
         # ─── Sidebar ───
         self.sidebar = tb.Frame(self, bootstyle="dark")
         self.sidebar.grid(row=1, column=0, sticky="nsw", padx=0, pady=0)
+        if small:
+            self.sidebar.configure(width=260)
         
         # Internal container for sidebar buttons to control padding better
         sidebar_inner = tb.Frame(self.sidebar, bootstyle="dark")
         sidebar_inner.pack(padx=10, pady=10, fill="both", expand=True)
 
-        tb.Button(sidebar_inner, text="⚙ Reference Management", bootstyle="success", command=self.open_reference_management).pack(pady=(10, 5), fill="x")
-        self.selected_ref_label = tb.Label(sidebar_inner, text="Reference: None", font=("Helvetica", 14, "bold"), bootstyle="secondary")
-        self.selected_ref_label.pack(pady=(10, 5), fill="x")
-        self.ok_label = tb.Label(sidebar_inner, text="OK: 0", font=("Helvetica", 18, "bold"), bootstyle="success")
-        self.ok_label.pack(pady=(5, 5), fill="x")
-        self.nok_label = tb.Label(sidebar_inner, text="NOK: 0", font=("Helvetica", 18, "bold"), bootstyle="danger")
+        tb.Button(sidebar_inner, text="⚙ Reference Management", bootstyle="success", command=self.open_reference_management,
+                  padding=(6, 4)).pack(pady=(8, 5), fill="x")
+        self.selected_ref_label = tb.Label(sidebar_inner, text="Reference: None", font=self._responsive_font(11, True), bootstyle="secondary")
+        self.selected_ref_label.pack(pady=(8, 5), fill="x")
+        self.ok_label = tb.Label(sidebar_inner, text="OK: 0", font=self._responsive_font(14, True), bootstyle="success")
+        self.ok_label.pack(pady=(4, 4), fill="x")
+        self.nok_label = tb.Label(sidebar_inner, text="NOK: 0", font=self._responsive_font(14, True), bootstyle="danger")
         self.nok_label.pack(pady=(5, 10), fill="x")
 
         # ─── Main Content ───
@@ -326,7 +358,7 @@ class MainApp(tb.Window):
         self.camera_label = tb.Label(self.camera_frame, cursor="arrow")
         self.camera_label.pack(fill="both", expand=True)
 
-        self.result_label = tb.Label(self.main_content, text="Ready", font=("Helvetica", 18, "bold"), bootstyle="info", anchor="center")
+        self.result_label = tb.Label(self.main_content, text="Ready", font=self._responsive_font(14, True), bootstyle="info", anchor="center")
         self.result_label.grid(row=1, column=0, sticky="ew", pady=10)
        
         self.camera_label.bind("<Configure>", self._on_camera_label_configure)
@@ -386,10 +418,18 @@ class MainApp(tb.Window):
         self.keyboard_win.title("Keyboard")
 
         # Center keyboard and make it responsive
-        kb_width = min(800, int(self.winfo_screenwidth() * 0.6))
-        kb_height = 350
-        x = (self.winfo_screenwidth() // 2) - (kb_width // 2)
-        y = self.winfo_screenheight() - kb_height - 50 # Position at bottom
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        small_profile = self._is_small_panel_profile()
+
+        kb_width = screen_w if small_profile else min(900, int(screen_w * 0.75))
+        kb_height = max(220, int(screen_h * 0.36)) if small_profile else 350
+        if small_profile:
+            x = 0
+            y = max(0, screen_h - kb_height - 2)
+        else:
+            x = max(0, (screen_w - kb_width) // 2)
+            y = max(0, screen_h - kb_height - 50)
         self.keyboard_win.geometry(f"{kb_width}x{kb_height}+{x}+{y}")
 
         self.keyboard_win.attributes("-topmost", True)
@@ -419,11 +459,15 @@ class MainApp(tb.Window):
     def _create_child_window(self, title, width, height, parent=None, resizable=(True, True), center=True):
         if parent is None:
             parent = self
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        if self._is_small_panel_profile():
+            width = min(width, max(520, int(screen_width * 0.96)))
+            height = min(height, max(360, int(screen_height * 0.92)))
+
         win = tb.Toplevel(parent)
         win.title(title)
         if center:
-            screen_width = win.winfo_screenwidth()
-            screen_height = win.winfo_screenheight()
             x = (screen_width // 2) - (width // 2)
             y = (screen_height // 2) - (height // 2)
             win.geometry(f"{width}x{height}+{x}+{y}")
@@ -510,17 +554,23 @@ class MainApp(tb.Window):
                 ['z','x','c','v','b','n','m']]
 
         # Configure grid for main_frame to allow expansion
+        small_profile = self._is_small_panel_profile()
+        key_font = self._responsive_font(10, True) if small_profile else ("Helvetica", 11, "bold")
+        special_font = self._responsive_font(9, True) if small_profile else ("Helvetica", 10, "bold")
+        button_pad_x = 1 if small_profile else 2
+        button_pad_y = 1 if small_profile else 2
+
         for i in range(len(keys) + 1): # +1 for the bottom row of special keys
             main_frame.grid_rowconfigure(i, weight=1)
         for i in range(10): # Assuming max 10 columns for keys
             main_frame.grid_columnconfigure(i, weight=1)
 
         for r_idx, row_keys in enumerate(keys):
-            # Calculate offset for centering shorter rows
-            col_offset = (10 - len(row_keys)) // 2 
+            col_offset = (10 - len(row_keys)) // 2
             for c_idx, key in enumerate(row_keys):
-                btn = tb.Button(main_frame, text=key.upper(), command=lambda k=key: self._kb_key(k), takefocus=0)
-                btn.grid(row=r_idx, column=c_idx + col_offset, sticky="nsew", padx=2, pady=2)
+                btn = tb.Button(main_frame, text=key.upper(), command=lambda k=key: self._kb_key(k), takefocus=0,
+                                padding=(2, 1) if small_profile else (3, 2))
+                btn.grid(row=r_idx, column=c_idx + col_offset, sticky="nsew", padx=button_pad_x, pady=button_pad_y)
         
         # Bottom row of special keys
         bottom_row_idx = len(keys)
@@ -535,11 +585,16 @@ class MainApp(tb.Window):
         bottom_frame.grid_columnconfigure(3, weight=2) # Clear
         bottom_frame.grid_columnconfigure(4, weight=2) # Close
 
-        tb.Button(bottom_frame, text="Enter", bootstyle="success", command=self._kb_enter, takefocus=0).grid(row=0, column=0, sticky="nsew", padx=5)
-        tb.Button(bottom_frame, text="Space", command=lambda: self._kb_key(" "), takefocus=0).grid(row=0, column=1, sticky="nsew", padx=5)
-        tb.Button(bottom_frame, text="⌫ Back", bootstyle="warning", command=self._kb_backspace, takefocus=0).grid(row=0, column=2, sticky="nsew", padx=5)
-        tb.Button(bottom_frame, text="Clear", bootstyle="danger", command=self._kb_clear, takefocus=0).grid(row=0, column=3, sticky="nsew", padx=5)
-        tb.Button(bottom_frame, text="Close", bootstyle="secondary", command=self._close_keyboard, takefocus=0).grid(row=0, column=4, sticky="nsew", padx=5)
+        tb.Button(bottom_frame, text="Enter", bootstyle="success", command=self._kb_enter, takefocus=0,
+                  padding=(3, 1) if small_profile else (4, 2)).grid(row=0, column=0, sticky="nsew", padx=3, pady=2)
+        tb.Button(bottom_frame, text="Space", command=lambda: self._kb_key(" "), takefocus=0,
+                  padding=(3, 1) if small_profile else (4, 2)).grid(row=0, column=1, sticky="nsew", padx=3, pady=2)
+        tb.Button(bottom_frame, text="⌫ Back", bootstyle="warning", command=self._kb_backspace, takefocus=0,
+                  padding=(3, 1) if small_profile else (4, 2)).grid(row=0, column=2, sticky="nsew", padx=3, pady=2)
+        tb.Button(bottom_frame, text="Clear", bootstyle="danger", command=self._kb_clear, takefocus=0,
+                  padding=(3, 1) if small_profile else (4, 2)).grid(row=0, column=3, sticky="nsew", padx=3, pady=2)
+        tb.Button(bottom_frame, text="Close", bootstyle="secondary", command=self._close_keyboard, takefocus=0,
+                  padding=(3, 1) if small_profile else (4, 2)).grid(row=0, column=4, sticky="nsew", padx=3, pady=2)
 
     # ─── REFERENCE MANAGEMENT ───
     def open_reference_management(self):

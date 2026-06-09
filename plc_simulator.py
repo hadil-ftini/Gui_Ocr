@@ -15,9 +15,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(na
                     handlers=[logging.FileHandler("plc_simulator.log"), logging.StreamHandler()])
 logger = logging.getLogger('PLCSimulator')
 
-# --- Updated Register Map ---
+
 REG_REF_NAME_START = 0
-REF_NAME_LENGTH = 15        # Registers 0-14 (30 bytes)
+REF_NAME_LENGTH = 15       
 REG_START_TEST = 15
 REG_TEST_RESULT = 16
 REG_MODBUS_ENABLE = 17
