@@ -853,7 +853,9 @@ class MainApp(tb.Window):
         tb.Button(password_win, text="Enter", bootstyle="success", command=check_password).pack(pady=10)
 
     def _open_management_window(self):
-        win = self._create_child_window("Reference Management", 720, 520, parent=self, fullscreen=self._is_embedded_panel())
+        win_w = 715 if self._is_hd_portrait_panel() else 720
+        win_h = 800 if self._is_hd_portrait_panel() else 520
+        win = self._create_child_window("Reference Management", win_w, win_h, parent=self, fullscreen=self._is_embedded_panel())
         if not self._is_embedded_panel():
             win.minsize(680, 460)
         win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
@@ -947,8 +949,8 @@ class MainApp(tb.Window):
                 self.management_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
 
     def _open_edit_window(self, ref):
-        win_w = 680 if self._is_hd_portrait_panel() else 620
-        win_h = 600 if self._is_hd_portrait_panel() else 560
+        win_w = 715 if self._is_hd_portrait_panel() else 620
+        win_h = 750 if self._is_hd_portrait_panel() else 560
         win = self._create_child_window("Edit Reference", win_w, win_h, parent=self, fullscreen=self._is_embedded_panel())
         win.grid_rowconfigure(0, weight=1)
         win.grid_columnconfigure(0, weight=1)
@@ -1001,8 +1003,8 @@ class MainApp(tb.Window):
 
     # ─── SETTINGS WINDOW ───
     def open_settings(self):
-        win_w = 680 if self._is_hd_portrait_panel() else 620
-        win_h = 600 if self._is_hd_portrait_panel() else 620
+        win_w = 715 if self._is_hd_portrait_panel() else 620
+        win_h = 780 if self._is_hd_portrait_panel() else 620
         win = self._create_child_window("Add Reference", win_w, win_h, parent=self, fullscreen=self._is_embedded_panel())
         win.grid_rowconfigure(0, weight=1)
         win.grid_columnconfigure(0, weight=1)
