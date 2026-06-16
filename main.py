@@ -11,6 +11,8 @@ import os
 import time
 import threading
 import queue
+
+
 class MainApp(tb.Window):
     def __init__(self):
         super().__init__(themename="superhero")
@@ -26,22 +28,18 @@ class MainApp(tb.Window):
         self.adding_new_ref = False
         self.pending_ref = None
         self.selected_reference_name = None
-        self.ok_count = 0
-        self.nok_count = 0
         self.ok_counter_var = tk.IntVar(value=0)
         self.nok_counter_var = tk.IntVar(value=0)
 
-        # -- Modbus Client Setup --
-        # IMPORTANT: Set the correct IP address and port for your PLC here
-        # The PLC simulator runs on port 5502 by default, so connect there.
+        # Modbus
         self.modbus_manager = mm.ModbusManager(host="127.0.0.1", port=5502)
         self.last_poll_time = 0
-        self.poll_interval = 1  # Poll PLC every 1 second
+        self.poll_interval = 1
         self.last_plc_ref = ""
-        self._modbus_was_connected = False # Track connection state
-        self.modbus_enabled = True  # Flag to enable/disable Modbus communication
+        self._modbus_was_connected = False
+        self.modbus_enabled = True
 
-        # Virtual Keyboard State
+        # Virtual Keyboard
         self.keyboard_win = None
         self.current_kb_entry = None
         self.current_kb_var = None
@@ -71,32 +69,48 @@ class MainApp(tb.Window):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_main_window_configure) # Bind main window configure event
 
+    def _screen_size(self):
+        return self.winfo_screenwidth(), self.winfo_screenheight()
+
     def _is_portrait_panel_profile(self):
         """Return True for 7-inch portrait panels (~154mm H x 86mm W, 480x800)."""
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
+        screen_w, screen_h = self._screen_size()
         if screen_w == 480 and screen_h == 800:
             return True
         return screen_h > screen_w and screen_w <= 520 and screen_h >= 700
 
+    def _is_landscape_panel_profile(self):
+        """Return True for 7-inch landscape panels (800x480)."""
+        screen_w, screen_h = self._screen_size()
+        if screen_w == 800 and screen_h == 480:
+            return True
+        return screen_w > screen_h and screen_w <= 820 and screen_h <= 520
+
+    def _is_embedded_panel(self):
+        """Any small Raspberry Pi / 7-inch embedded display."""
+        return self._is_portrait_panel_profile() or self._is_landscape_panel_profile()
+
     def _is_small_panel_profile(self):
         """Return True for Raspberry Pi / 7-inch style displays (landscape or portrait)."""
-        if self._is_portrait_panel_profile():
-            return True
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        return (screen_w == 800 and screen_h == 480) or (screen_w <= 820 and screen_h <= 520)
+        return self._is_embedded_panel()
+
+    def _embedded_sidebar_width(self):
+        if self.is_portrait_panel:
+            return 0
+        return 175 if self._is_landscape_panel_profile() else 200
 
     def _responsive_font(self, base_size, bold=False):
         """Scale fonts for small embedded panels and touch usage."""
         if self.is_portrait_panel:
-            scale = 1.0
+            scale = 0.95
+        elif self._is_landscape_panel_profile():
+            scale = 0.88
         elif self.is_small_panel:
-            scale = 1.12
+            scale = 1.05
         else:
             scale = 1.0
         weight = "bold" if bold else "normal"
-        return ("Helvetica", max(9, int(base_size * scale)), weight)
+        return ("Helvetica", max(8, int(base_size * scale)), weight)
 
     def _lock_fullscreen_window(self, win_w, win_h):
         """Fill the physical panel and prevent resize drift on embedded displays."""
@@ -108,36 +122,20 @@ class MainApp(tb.Window):
             pass
 
     def _configure_responsive_window(self):
-        """Initialize a resizable window that adapts to current display size."""
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        is_portrait_profile = self._is_portrait_panel_profile()
-        is_exact_800x480 = (screen_w == 800 and screen_h == 480)
-        is_7inch_landscape = screen_w <= 820 and screen_h <= 520 and not is_portrait_profile
-
-        if is_portrait_profile:
+        """Initialize window geometry for the current display."""
+        screen_w, screen_h = self._screen_size()
+        if self._is_embedded_panel():
             self._lock_fullscreen_window(screen_w, screen_h)
             return
-        if is_exact_800x480:
-            self._lock_fullscreen_window(800, 480)
-            return
-        if is_7inch_landscape:
-            win_w, win_h = screen_w, screen_h
-        else:
-            win_w = int(screen_w * 0.96)
-            win_h = int(screen_h * 0.90)
+
+        win_w = int(screen_w * 0.96)
+        win_h = int(screen_h * 0.90)
         win_w = min(win_w, screen_w)
         win_h = min(win_h, screen_h)
         pos_x = max(0, (screen_w - win_w) // 2)
         pos_y = max(0, (screen_h - win_h) // 2)
-
         self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
-        if is_7inch_landscape:
-            min_w, min_h = 700, 420
-        else:
-            min_w = max(640, min(900, int(screen_w * 0.70)))
-            min_h = max(420, min(620, int(screen_h * 0.70)))
-        self.minsize(min_w, min_h)
+        self.minsize(640, 420)
         self.resizable(True, True)
 
     def on_closing(self):
@@ -182,9 +180,13 @@ class MainApp(tb.Window):
         sy = preview_h / frame_h
         return (int(x * sx), int(y * sy), int(w * sx), int(h * sy))
 
-    def _create_live_preview(self, parent, width=520, height=300, initial_roi=None):
+    def _create_live_preview(self, parent, width=520, height=300, initial_roi=None, expand_preview=False):
+        pad = 4 if self._is_embedded_panel() else 10
         preview_container = tb.Frame(parent)
-        preview_container.pack(padx=10, pady=10, fill="both", expand=True)
+        if expand_preview:
+            preview_container.grid(row=0, column=0, sticky="nsew", padx=pad, pady=pad)
+        else:
+            preview_container.pack(padx=pad, pady=pad, fill="both", expand=True)
         preview_label = tb.Label(preview_container, cursor="crosshair")
         preview_label.pack(fill="both", expand=True)
         preview_label.preview_size = (width, height)
@@ -249,10 +251,21 @@ class MainApp(tb.Window):
         return f"{prefix} {name}" if name else f"{prefix} None"
 
     def _preview_dimensions(self, default_w=580, default_h=300):
+        screen_w, screen_h = self._screen_size()
         if self.is_portrait_panel:
-            screen_w = self.winfo_screenwidth()
-            return max(420, screen_w - 24), 170
+            return screen_w - 16, max(140, int(screen_h * 0.22))
+        if self._is_landscape_panel_profile():
+            return screen_w - self._embedded_sidebar_width() - 30, max(220, int(screen_h * 0.58))
         return default_w, default_h
+
+    def _tree_column_widths(self, total_width=None):
+        """Split treeview columns for narrow embedded panels."""
+        if total_width is None:
+            total_width = self._screen_size()[0]
+        usable = max(200, total_width - 50)
+        if usable < 500:
+            return int(usable * 0.42), int(usable * 0.58)
+        return int(usable * 0.35), int(usable * 0.65)
 
     def _update_reference_counters(self, match=None):
         selected_ref = next((r for r in self.references if r['name'] == self.selected_reference_name), None)
@@ -287,14 +300,14 @@ class MainApp(tb.Window):
         """Load and resize a logo for the header bar."""
         try:
             logo_img = Image.open(path)
-            aspect_ratio = logo_img.width / logo_img.height
-            new_width = max(50, int(height * aspect_ratio))
+            aspect = logo_img.width / logo_img.height
+            new_width = max(45, int(height * aspect))
             logo_img = logo_img.resize((new_width, height), Image.Resampling.LANCZOS)
             return ImageTk.PhotoImage(logo_img)
         except Exception:
             return None
 
-    def _build_header_controls(self, parent, combo_width=18):
+    def _build_header_controls(self, parent, combo_width=16):
         """Shared reference combo + action buttons for compact headers."""
         self.ref_var = tk.StringVar()
         self.ref_combo = tb.Combobox(parent, textvariable=self.ref_var,
@@ -304,27 +317,28 @@ class MainApp(tb.Window):
         self.ref_combo.pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
 
-        btn_pad = (4, 3) if self.is_portrait_panel else (3, 2)
-        self.modbus_btn = tb.Button(parent, text="Modbus", bootstyle="success", command=self.toggle_modbus,
-                                    padding=btn_pad)
-        self.modbus_btn.pack(side="right", padx=(2, 2))
-        self.test_btn = tb.Button(parent, text="Test", bootstyle="success", command=self.test_ocr,
-                                  padding=btn_pad)
-        self.test_btn.pack(side="right", padx=(2, 2))
+        btn_pad = (3, 2) if self._is_landscape_panel_profile() else (4, 3)
+        self.modbus_btn = tb.Button(parent, text="Modbus", bootstyle="success",
+                                    command=self.toggle_modbus, padding=btn_pad)
+        self.modbus_btn.pack(side="right", padx=2)
+        self.test_btn = tb.Button(parent, text="Test", bootstyle="success",
+                                  command=self.test_ocr, padding=btn_pad)
+        self.test_btn.pack(side="right", padx=2)
 
     def setup_ui(self):
         portrait = self.is_portrait_panel
+        landscape_small = self._is_landscape_panel_profile()
         small = self.is_small_panel and not portrait
         project_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(project_dir, "logo.png")
         logo2_path = os.path.join(project_dir, "logo2.png")
         button_pad = (6, 4) if small else (4, 2)
-        logo_h = 22 if portrait else (28 if small else 50)
+        logo_h = 20 if landscape_small else (22 if portrait else 45)
 
         if portrait:
-            self.grid_rowconfigure(0, weight=0)  # Header
-            self.grid_rowconfigure(1, weight=1)  # Camera
-            self.grid_rowconfigure(2, weight=0)  # Footer stats
+            self.grid_rowconfigure(0, weight=0)
+            self.grid_rowconfigure(1, weight=1)
+            self.grid_rowconfigure(2, weight=0)
             self.grid_columnconfigure(0, weight=1)
         else:
             self.grid_rowconfigure(0, weight=0)
@@ -338,9 +352,9 @@ class MainApp(tb.Window):
         self.header.grid(row=0, column=0, columnspan=header_span, sticky="ew", padx=0, pady=0)
 
         if portrait or small:
-            pad_x = 4 if portrait else 6
+            pad_x = 4 if portrait else 5
             top_bar = tb.Frame(self.header, bootstyle="light")
-            top_bar.pack(fill="x", padx=pad_x, pady=(3 if portrait else 4, 2))
+            top_bar.pack(fill="x", padx=pad_x, pady=(3, 2))
 
             logo_tk = self._load_logo(logo_path, logo_h)
             if logo_tk:
@@ -348,20 +362,20 @@ class MainApp(tb.Window):
                 self.logo_label = tb.Label(top_bar, image=self.logo_tk, bootstyle="light")
                 self.logo_label.pack(side="left")
             else:
-                self.logo_label = tb.Label(top_bar, text="TUNITECH", font=self._responsive_font(11, True), bootstyle="light")
+                self.logo_label = tb.Label(top_bar, text="TUNITECH",
+                                           font=self._responsive_font(10, True), bootstyle="light")
                 self.logo_label.pack(side="left")
 
-            logo2_tk = self._load_logo(logo2_path, logo_h)
-            if logo2_tk:
-                self.logo2_tk = logo2_tk
-                self.logo2_label = tb.Label(top_bar, image=self.logo2_tk, bootstyle="light")
-                self.logo2_label.pack(side="right")
-            elif not portrait:
-                print("Logo2 not found")
+            if not landscape_small:
+                logo2_tk = self._load_logo(logo2_path, logo_h)
+                if logo2_tk:
+                    self.logo2_tk = logo2_tk
+                    self.logo2_label = tb.Label(top_bar, image=self.logo2_tk, bootstyle="light")
+                    self.logo2_label.pack(side="right")
 
             controls = tb.Frame(self.header, bootstyle="light")
-            controls.pack(fill="x", padx=pad_x, pady=(0, 3 if portrait else 4))
-            self._build_header_controls(controls, combo_width=14 if portrait else 18)
+            controls.pack(fill="x", padx=pad_x, pady=(0, 3))
+            self._build_header_controls(controls, combo_width=12 if portrait else 16)
         else:
             self.header.columnconfigure(1, weight=1)
             self.header.columnconfigure(2, weight=1)
@@ -396,33 +410,47 @@ class MainApp(tb.Window):
             self.ref_var = tk.StringVar()
             self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
                                          values=[r['name'] for r in self.references],
-                                         state="readonly", width=30)
+                                         state="readonly", width=28)
             self.ref_combo.configure(font=self._responsive_font(10))
-            self.ref_combo.grid(row=0, column=2, padx=15, pady=10, sticky="e")
+            self.ref_combo.grid(row=0, column=2, padx=15, pady=8, sticky="e")
             self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
 
         # ─── Sidebar (landscape small / desktop only) ───
         if not portrait:
+            sidebar_w = self._embedded_sidebar_width()
             self.sidebar = tb.Frame(self, bootstyle="dark")
             self.sidebar.grid(row=1, column=0, sticky="nsw", padx=0, pady=0)
             if small:
-                self.sidebar.configure(width=260)
+                self.sidebar.configure(width=sidebar_w)
+                self.sidebar.grid_propagate(False)
 
             sidebar_inner = tb.Frame(self.sidebar, bootstyle="dark")
-            sidebar_inner.pack(padx=10, pady=10, fill="both", expand=True)
+            sidebar_inner.pack(padx=6 if small else 10, pady=8 if small else 10, fill="both", expand=True)
 
-            tb.Button(sidebar_inner, text="⚙ Reference Management", bootstyle="success", command=self.open_reference_management,
-                      padding=(6, 4)).pack(pady=(8, 5), fill="x")
-            self.selected_ref_label = tb.Label(sidebar_inner, text=self._ref_label_text(), font=self._responsive_font(11, True), bootstyle="secondary")
-            self.selected_ref_label.pack(pady=(8, 5), fill="x")
-            self.ok_label = tb.Label(sidebar_inner, text="OK: 0", font=self._responsive_font(14, True), bootstyle="success")
-            self.ok_label.pack(pady=(4, 4), fill="x")
-            self.nok_label = tb.Label(sidebar_inner, text="NOK: 0", font=self._responsive_font(14, True), bootstyle="danger")
-            self.nok_label.pack(pady=(5, 10), fill="x")
+            ref_btn_text = "⚙ Ref Mgmt" if small else "⚙ Reference Management"
+            tb.Button(sidebar_inner, text=ref_btn_text, bootstyle="success",
+                      command=self.open_reference_management,
+                      padding=(4, 3) if small else (6, 4)).pack(pady=6 if small else 8, fill="x")
+            self.selected_ref_label = tb.Label(sidebar_inner, text=self._ref_label_text(),
+                                               font=self._responsive_font(10, True), bootstyle="secondary")
+            self.selected_ref_label.pack(pady=(8, 4), fill="x")
+            self.ok_label = tb.Label(sidebar_inner, text="OK: 0",
+                                     font=self._responsive_font(13 if landscape_small else 14, True), bootstyle="success")
+            self.ok_label.pack(pady=2, fill="x")
+            self.nok_label = tb.Label(sidebar_inner, text="NOK: 0",
+                                      font=self._responsive_font(13 if landscape_small else 14, True), bootstyle="danger")
+            self.nok_label.pack(pady=2, fill="x")
 
         # ─── Main Content ───
         content_col = 0 if portrait else 1
-        content_pad = (4, 2) if portrait else (10, 10)
+        if portrait:
+            content_pad = (2, 0)
+        elif landscape_small:
+            content_pad = (3, 3)
+        elif small:
+            content_pad = (4, 4)
+        else:
+            content_pad = (10, 10)
         self.main_content = tb.Frame(self)
         self.main_content.grid(row=1, column=content_col, sticky="nsew", padx=content_pad[0], pady=content_pad[1])
 
@@ -430,15 +458,15 @@ class MainApp(tb.Window):
         self.main_content.grid_rowconfigure(1, weight=0)
         self.main_content.grid_columnconfigure(0, weight=1)
 
-        cam_pad = (2, 2) if portrait else (5, 5)
         self.camera_frame = tb.Labelframe(self.main_content, text="Live Feed")
-        self.camera_frame.grid(row=0, column=0, sticky="nsew", padx=cam_pad[0], pady=cam_pad[1])
+        self.camera_frame.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
         self.camera_label = tb.Label(self.camera_frame, cursor="arrow")
         self.camera_label.pack(fill="both", expand=True)
 
-        result_pady = (4, 2) if portrait else 10
-        self.result_label = tb.Label(self.main_content, text="Ready", font=self._responsive_font(12 if portrait else 14, True),
+        self.result_label = tb.Label(self.main_content, text="Ready",
+                                     font=self._responsive_font(13 if landscape_small else (12 if portrait else 14), True),
                                      bootstyle="info", anchor="center")
+        result_pady = 6 if landscape_small or portrait else 10
         self.result_label.grid(row=1, column=0, sticky="ew", pady=result_pady)
 
         # ─── Footer bar (portrait only) ───
@@ -521,13 +549,13 @@ class MainApp(tb.Window):
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
         portrait_profile = self.is_portrait_panel
-        small_profile = self._is_small_panel_profile() and not portrait_profile
+        landscape_embedded = self._is_landscape_panel_profile()
 
         kb_width = screen_w
         if portrait_profile:
             kb_height = max(200, int(screen_h * 0.30))
             x, y = 0, max(0, screen_h - kb_height)
-        elif small_profile:
+        elif landscape_embedded:
             kb_height = max(220, int(screen_h * 0.36))
             x, y = 0, max(0, screen_h - kb_height - 2)
         else:
@@ -561,33 +589,101 @@ class MainApp(tb.Window):
         self.current_next_widget = None
         self._closing_keyboard = False
 
-    def _create_child_window(self, title, width, height, parent=None, resizable=(True, True), center=True):
+    def _create_child_window(self, title, width, height, parent=None, resizable=(True, True), center=True, fullscreen=False):
         if parent is None:
             parent = self
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        if self.is_portrait_panel:
-            width = min(width, max(460, int(screen_width * 0.98)))
-            height = min(height, max(340, int(screen_height * 0.94)))
-        elif self._is_small_panel_profile():
-            width = min(width, max(520, int(screen_width * 0.96)))
-            height = min(height, max(360, int(screen_height * 0.92)))
+        screen_width, screen_height = self._screen_size()
+        embedded = self._is_embedded_panel()
+
+        if fullscreen and embedded:
+            if self._is_landscape_panel_profile():
+                width, height = 780, 440
+            else:
+                width, height = screen_width, screen_height
+            x, y = 0, 0
+            center = False
+            resizable = (False, False)
+        elif embedded:
+            width = min(width, screen_width)
+            height = min(height, screen_height)
+            x = max(0, (screen_width - width) // 2)
+            y = max(0, (screen_height - height) // 2)
+            center = False
+        else:
+            x = max(0, (screen_width - width) // 2)
+            y = max(0, (screen_height - height) // 2)
 
         win = tb.Toplevel(parent)
         win.title(title)
-        if center:
-            x = max(0, (screen_width - width) // 2)
-            y = max(0, (screen_height - height) // 2)
-            win.geometry(f"{width}x{height}+{x}+{y}")
-        else:
-            win.geometry(f"{width}x{height}")
+        win.geometry(f"{width}x{height}+{x}+{y}")
         win.resizable(*resizable)
+        if fullscreen and embedded:
+            win.minsize(width, height)
         win.transient(parent)
         win.attributes("-topmost", True)
         win.lift()
         win.focus_force()
         win.after(200, lambda: win.attributes("-topmost", False))
         return win
+
+    def _build_management_buttons(self, parent, close_cmd):
+        """Action buttons sized for narrow embedded panels."""
+        screen_w = self._screen_size()[0]
+        btn_pad = (3, 2) if screen_w <= 520 else (10, 4)
+        buttons = [
+            ("Add", "success", self._add_reference),
+            ("Edit", "warning", self._edit_reference),
+            ("Remove", "danger", self._remove_reference),
+            ("Close", "secondary", close_cmd),
+        ]
+        if screen_w <= 520:
+            parent.columnconfigure(0, weight=1)
+            parent.columnconfigure(1, weight=1)
+            for i, (text, style, cmd) in enumerate(buttons):
+                tb.Button(parent, text=text, bootstyle=style, command=cmd, padding=btn_pad).grid(
+                    row=i // 2, column=i % 2, sticky="ew", padx=3, pady=2)
+        else:
+            for text, style, cmd in buttons:
+                tb.Button(parent, text=text, bootstyle=style, command=cmd, padding=btn_pad).pack(side="left", padx=6)
+
+    def _build_ref_form_window(self, win, name_var, text_var, save_text, save_cmd):
+        """Compact form layout for add/edit reference dialogs."""
+        embedded = self._is_embedded_panel()
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_rowconfigure(1, weight=0)
+        win.grid_columnconfigure(0, weight=1)
+
+        form_pad = 6 if embedded else 15
+        container = tb.Frame(win, padding=form_pad)
+        container.grid(row=1, column=0, sticky="ew")
+        container.grid_columnconfigure(0, weight=1)
+
+        lbl_font = self._responsive_font(10, True) if embedded else ("Helvetica", 12, "bold")
+        entry_font = self._responsive_font(11) if embedded else ("Helvetica", 14)
+        entry_pady = (0, 6) if embedded else (0, 15)
+
+        tb.Label(container, text="Reference Name:", font=lbl_font).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        e1 = tb.Entry(container, textvariable=name_var, font=entry_font)
+        e1.grid(row=1, column=0, sticky="ew", pady=entry_pady)
+
+        tb.Label(container, text="Expected Text:", font=lbl_font).grid(row=2, column=0, sticky="w", pady=(0, 2))
+        e2 = tb.Entry(container, textvariable=text_var, font=entry_font)
+        e2.grid(row=3, column=0, sticky="ew", pady=entry_pady)
+
+        def trigger_e1(e):
+            e1.focus_set()
+            e1.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
+        def trigger_e2(e):
+            e2.focus_set()
+            e2.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
+        e1.bind("<Button-1>", trigger_e1)
+        e2.bind("<Button-1>", trigger_e2)
+
+        tb.Button(container, text=save_text, bootstyle="success-outline", command=save_cmd,
+                  padding=(4, 3) if embedded else (6, 4)).grid(row=4, column=0, sticky="ew", pady=(2, 4))
+        return e1, e2
 
     def _pause_main_camera_display(self):
         self.main_camera_display = False
@@ -663,7 +759,7 @@ class MainApp(tb.Window):
                 ['z','x','c','v','b','n','m']]
 
         # Configure grid for main_frame to allow expansion
-        compact_profile = self.is_portrait_panel or self._is_small_panel_profile()
+        compact_profile = self._is_embedded_panel()
         key_font = self._responsive_font(9, True) if compact_profile else ("Helvetica", 11, "bold")
         button_pad_x = 1 if compact_profile else 2
         button_pad_y = 1 if compact_profile else 2
@@ -709,7 +805,8 @@ class MainApp(tb.Window):
     # ─── REFERENCE MANAGEMENT ───
     def open_reference_management(self):
         # Password prompt
-        pw_w, pw_h = (280, 140) if self.is_portrait_panel else (300, 150)
+        pw_w = min(280, self._screen_size()[0] - 20)
+        pw_h = 130 if self._is_embedded_panel() else 150
         password_win = self._create_child_window("Enter Password", pw_w, pw_h, parent=self, resizable=(False, False))
 
         tb.Label(password_win, text="Password:", font=("Helvetica", 12)).pack(pady=10)
@@ -733,46 +830,50 @@ class MainApp(tb.Window):
         tb.Button(password_win, text="Enter", bootstyle="success", command=check_password).pack(pady=10)
 
     def _open_management_window(self):
-        mgmt_w, mgmt_h = (470, 760) if self.is_portrait_panel else (720, 520)
-        win = self._create_child_window("Reference Management", mgmt_w, mgmt_h, parent=self)
-        if not self.is_portrait_panel:
+        win = self._create_child_window("Reference Management", 720, 520, parent=self, fullscreen=self._is_embedded_panel())
+        if not self._is_embedded_panel():
             win.minsize(680, 460)
         win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
 
-        # Theme control at top
+        win.grid_rowconfigure(1, weight=1)
+        win.grid_columnconfigure(0, weight=1)
+
+        embedded = self._is_embedded_panel()
+        outer_pad = 4 if embedded else 10
+
         theme_frame = tb.Frame(win)
-        theme_frame.pack(pady=10)
-        tb.Label(theme_frame, text="Theme:", font=("Helvetica", 12)).pack(side="left", padx=5)
-        self.theme_mb = tb.Menubutton(theme_frame, text="Themes", bootstyle="primary")
+        theme_frame.grid(row=0, column=0, sticky="ew", padx=outer_pad, pady=(outer_pad, 2))
+        theme_font = self._responsive_font(10) if embedded else ("Helvetica", 12)
+        tb.Label(theme_frame, text="Theme:", font=theme_font).pack(side="left", padx=(0, 4))
+        self.theme_mb = tb.Menubutton(theme_frame, text="Themes", bootstyle="primary",
+                                      padding=(3, 2) if embedded else (6, 4))
         self.theme_mb.pack(side="left")
         self.theme_menu = tb.Menu(self.theme_mb)
         for theme in tm.get_available_themes():
             self.theme_menu.add_command(label=theme, command=lambda t=theme: self.change_theme(t))
         self.theme_mb["menu"] = self.theme_menu
 
-        # References list
         list_frame = tb.Frame(win)
-        list_frame.pack(fill="both", expand=True, padx=15, pady=(10, 5))
+        list_frame.grid(row=1, column=0, sticky="nsew", padx=outer_pad, pady=2)
+        list_frame.grid_rowconfigure(0, weight=1)
+        list_frame.grid_columnconfigure(0, weight=1)
+
+        col_name_w, col_text_w = self._tree_column_widths()
         columns = ("name", "expected_text")
         self.ref_tree = tb.Treeview(list_frame, columns=columns, show="headings", bootstyle="info")
-        self.ref_tree.heading("name", text="Reference Name")
-        self.ref_tree.heading("expected_text", text="Expected OCR Text")
-        self.ref_tree.column("name", width=140 if self.is_portrait_panel else 220)
-        self.ref_tree.column("expected_text", width=200 if self.is_portrait_panel else 300)
+        self.ref_tree.heading("name", text="Name")
+        self.ref_tree.heading("expected_text", text="Expected Text")
+        self.ref_tree.column("name", width=col_name_w, minwidth=80, stretch=True)
+        self.ref_tree.column("expected_text", width=col_text_w, minwidth=100, stretch=True)
         for ref in self.references:
             self.ref_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
-        self.ref_tree.pack(fill="both", expand=True)
+        self.ref_tree.grid(row=0, column=0, sticky="nsew")
 
-        # Store reference to tree for refreshing
         self.management_tree = self.ref_tree
 
-        # Buttons at bottom
         btn_frame = tb.Frame(win)
-        btn_frame.pack(pady=(5, 12))
-        tb.Button(btn_frame, text="Add", bootstyle="success", command=self._add_reference).pack(side="left", padx=10)
-        tb.Button(btn_frame, text="Edit", bootstyle="warning", command=self._edit_reference).pack(side="left", padx=10)
-        tb.Button(btn_frame, text="Remove", bootstyle="danger", command=self._remove_reference).pack(side="left", padx=10)
-        tb.Button(btn_frame, text="Close", bootstyle="secondary", command=win.destroy).pack(side="left", padx=10)
+        btn_frame.grid(row=2, column=0, sticky="ew", padx=outer_pad, pady=(2, outer_pad))
+        self._build_management_buttons(btn_frame, win.destroy)
 
     def _add_reference(self):
         self._pause_main_camera_display()
@@ -823,39 +924,17 @@ class MainApp(tb.Window):
                 self.management_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
 
     def _open_edit_window(self, ref):
-        edit_w, edit_h = (470, 720) if self.is_portrait_panel else (620, 560)
-        win = self._create_child_window("Edit Reference", edit_w, edit_h, parent=self)
+        win = self._create_child_window("Edit Reference", 620, 560, parent=self, fullscreen=self._is_embedded_panel())
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_columnconfigure(0, weight=1)
         win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree(), self._resume_main_camera_display()] if e.widget == win else None)
         self._pause_main_camera_display()
 
         pw, ph = self._preview_dimensions(580, 300)
-        preview_label = self._create_live_preview(win, width=pw, height=ph, initial_roi=ref.get('roi'))
+        preview_label = self._create_live_preview(win, width=pw, height=ph, initial_roi=ref.get('roi'), expand_preview=True)
 
-        container = tb.Frame(win, padding=15)
-        container.pack(fill="both", expand=True)
-        container.grid_columnconfigure(0, weight=1)
-
-        tb.Label(container, text="Reference Name:", font=("Helvetica", 12, "bold")).grid(row=0, column=0, sticky="w", pady=(10, 5))
         name_var = tk.StringVar(value=ref.get('name', ''))
-        e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", 14))
-        e1.grid(row=1, column=0, sticky="ew", pady=(0, 15))
-
-        tb.Label(container, text="Expected Text:", font=("Helvetica", 12, "bold")).grid(row=2, column=0, sticky="w", pady=(0, 5))
         text_var = tk.StringVar(value=ref.get('expected_text', ''))
-        e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", 14))
-        e2.grid(row=3, column=0, sticky="ew", pady=(0, 15))
-
-        def trigger_e1(e):
-            e1.focus_set()
-            e1.icursor(tk.END)
-            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
-        def trigger_e2(e):
-            e2.focus_set()
-            e2.icursor(tk.END)
-            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
-        e1.bind("<Button-1>", trigger_e1)
-        e2.bind("<Button-1>", trigger_e2)
-
         original_name = ref.get('name')
 
         def confirm():
@@ -893,43 +972,21 @@ class MainApp(tb.Window):
             win.destroy()
             self.update_result_ui(f"Reference '{new_name}' updated.", "success")
 
-        confirm_btn = tb.Button(container, text="SAVE CHANGES", bootstyle="success-outline", command=confirm)
-        confirm_btn.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        self._build_ref_form_window(win, name_var, text_var, "SAVE CHANGES", confirm)
 
     # ─── SETTINGS WINDOW ───
     def open_settings(self):
-        add_w, add_h = (470, 760) if self.is_portrait_panel else (620, 620)
-        win = self._create_child_window("Add Reference", add_w, add_h, parent=self)
+        win = self._create_child_window("Add Reference", 620, 620, parent=self, fullscreen=self._is_embedded_panel())
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_columnconfigure(0, weight=1)
         win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree(), self._resume_main_camera_display()] if e.widget == win else None)
         self._pause_main_camera_display()
 
         pw, ph = self._preview_dimensions(580, 320)
-        preview_label = self._create_live_preview(win, width=pw, height=ph)
+        preview_label = self._create_live_preview(win, width=pw, height=ph, expand_preview=True)
 
-        container = tb.Frame(win, padding=15)
-        container.pack(fill="both", expand=True)
-        container.grid_columnconfigure(0, weight=1)
-
-        tb.Label(container, text="Reference Name:", font=("Helvetica", 12, "bold")).grid(row=0, column=0, sticky="w", pady=(10, 5))
         name_var = tk.StringVar()
-        e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", 14))
-        e1.grid(row=1, column=0, sticky="ew", pady=(0, 15))
-
-        tb.Label(container, text="Expected Text:", font=("Helvetica", 12, "bold")).grid(row=2, column=0, sticky="w", pady=(0, 5))
         text_var = tk.StringVar()
-        e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", 14))
-        e2.grid(row=3, column=0, sticky="ew", pady=(0, 15))
-
-        def trigger_e1(e):
-            e1.focus_set()
-            e1.icursor(tk.END)
-            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
-        def trigger_e2(e):
-            e2.focus_set()
-            e2.icursor(tk.END)
-            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
-        e1.bind("<Button-1>", trigger_e1)
-        e2.bind("<Button-1>", trigger_e2)
 
         def confirm():
             name = name_var.get().strip()
@@ -954,8 +1011,7 @@ class MainApp(tb.Window):
             self._clear_ocr_results()
             self.update_result_ui(f"Reference '{name}' added.", "success")
 
-        confirm_btn = tb.Button(container, text="SAVE REFERENCE", bootstyle="success-outline", command=confirm)
-        confirm_btn.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        self._build_ref_form_window(win, name_var, text_var, "SAVE REFERENCE", confirm)
 
     # ─── ARCHIVE & PASSWORD WINDOW ───
     def open_archive(self):
@@ -1368,13 +1424,14 @@ class MainApp(tb.Window):
     def _on_main_window_configure(self, event):
         if event.widget == self:
             if self.is_portrait_panel:
-                scaled_size = max(11, min(16, int(event.height / 55)))
+                scaled_size = max(10, min(14, int(event.height / 58)))
+            elif self._is_landscape_panel_profile():
+                scaled_size = max(11, min(15, int(event.height / 32)))
             else:
-                scaled_size = max(18, int(event.height / 40))
+                scaled_size = max(14, int(event.height / 40))
             self.result_label.configure(font=("Helvetica", scaled_size, "bold"))
 
     def _on_camera_label_configure(self, event):
-        # Update camera_label dimensions when it resizes
         if event.width > 0 and event.height > 0:
             self.camera_width = event.width
             self.camera_height = event.height
