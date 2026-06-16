@@ -79,6 +79,13 @@ class MainApp(tb.Window):
             return True
         return screen_h > screen_w and screen_w <= 520 and screen_h >= 700
 
+    def _is_hd_portrait_panel(self):
+        """Return True for 720x1280 HD portrait displays."""
+        screen_w, screen_h = self._screen_size()
+        if screen_w == 720 and screen_h == 1280:
+            return True
+        return screen_h > screen_w and screen_w == 720 and screen_h >= 1200
+
     def _is_landscape_panel_profile(self):
         """Return True for 7-inch landscape panels (800x480)."""
         screen_w, screen_h = self._screen_size()
@@ -88,20 +95,26 @@ class MainApp(tb.Window):
 
     def _is_embedded_panel(self):
         """Any small Raspberry Pi / 7-inch embedded display."""
-        return self._is_portrait_panel_profile() or self._is_landscape_panel_profile()
+        return self._is_portrait_panel_profile() or self._is_landscape_panel_profile() or self._is_hd_portrait_panel()
 
     def _is_small_panel_profile(self):
         """Return True for Raspberry Pi / 7-inch style displays (landscape or portrait)."""
         return self._is_embedded_panel()
 
+    def _is_hd_panel(self):
+        """Return True for HD portrait panels (720x1280)."""
+        return self._is_hd_portrait_panel()
+
     def _embedded_sidebar_width(self):
-        if self.is_portrait_panel:
+        if self.is_portrait_panel or self._is_hd_portrait_panel():
             return 0
         return 175 if self._is_landscape_panel_profile() else 200
 
     def _responsive_font(self, base_size, bold=False):
         """Scale fonts for small embedded panels and touch usage."""
-        if self.is_portrait_panel:
+        if self._is_hd_portrait_panel():
+            scale = 1.10  # Slightly larger for 720x1280
+        elif self.is_portrait_panel:
             scale = 0.95
         elif self._is_landscape_panel_profile():
             scale = 0.88
@@ -252,6 +265,8 @@ class MainApp(tb.Window):
 
     def _preview_dimensions(self, default_w=580, default_h=300):
         screen_w, screen_h = self._screen_size()
+        if self._is_hd_portrait_panel():
+            return screen_w - 20, max(300, int(screen_h * 0.28))
         if self.is_portrait_panel:
             return screen_w - 16, max(140, int(screen_h * 0.22))
         if self._is_landscape_panel_profile():
@@ -327,15 +342,16 @@ class MainApp(tb.Window):
 
     def setup_ui(self):
         portrait = self.is_portrait_panel
+        hd_portrait = self._is_hd_portrait_panel()
         landscape_small = self._is_landscape_panel_profile()
-        small = self.is_small_panel and not portrait
+        small = self.is_small_panel and not portrait and not hd_portrait
         project_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(project_dir, "logo.png")
         logo2_path = os.path.join(project_dir, "logo2.png")
         button_pad = (6, 4) if small else (4, 2)
-        logo_h = 20 if landscape_small else (22 if portrait else 45)
+        logo_h = 20 if landscape_small else (28 if hd_portrait else (22 if portrait else 45))
 
-        if portrait:
+        if portrait or hd_portrait:
             self.grid_rowconfigure(0, weight=0)
             self.grid_rowconfigure(1, weight=1)
             self.grid_rowconfigure(2, weight=0)
@@ -348,11 +364,11 @@ class MainApp(tb.Window):
 
         # ─── Header ───
         self.header = tb.Frame(self, bootstyle="light")
-        header_span = 1 if portrait else 2
+        header_span = 1 if (portrait or hd_portrait) else 2
         self.header.grid(row=0, column=0, columnspan=header_span, sticky="ew", padx=0, pady=0)
 
-        if portrait or small:
-            pad_x = 4 if portrait else 5
+        if portrait or hd_portrait or small:
+            pad_x = 4 if portrait else (5 if hd_portrait else 5)
             top_bar = tb.Frame(self.header, bootstyle="light")
             top_bar.pack(fill="x", padx=pad_x, pady=(3, 2))
 
@@ -375,7 +391,8 @@ class MainApp(tb.Window):
 
             controls = tb.Frame(self.header, bootstyle="light")
             controls.pack(fill="x", padx=pad_x, pady=(0, 3))
-            self._build_header_controls(controls, combo_width=12 if portrait else 16)
+            combo_w = 12 if portrait else (16 if hd_portrait else 16)
+            self._build_header_controls(controls, combo_width=combo_w)
         else:
             self.header.columnconfigure(1, weight=1)
             self.header.columnconfigure(2, weight=1)
@@ -442,9 +459,9 @@ class MainApp(tb.Window):
             self.nok_label.pack(pady=2, fill="x")
 
         # ─── Main Content ───
-        content_col = 0 if portrait else 1
-        if portrait:
-            content_pad = (2, 0)
+        content_col = 0 if (portrait or hd_portrait) else 1
+        if portrait or hd_portrait:
+            content_pad = (2, 0) if portrait else (4, 3)
         elif landscape_small:
             content_pad = (3, 3)
         elif small:
@@ -464,13 +481,13 @@ class MainApp(tb.Window):
         self.camera_label.pack(fill="both", expand=True)
 
         self.result_label = tb.Label(self.main_content, text="Ready",
-                                     font=self._responsive_font(13 if landscape_small else (12 if portrait else 14), True),
+                                     font=self._responsive_font(13 if landscape_small else (14 if hd_portrait else (12 if portrait else 14)), True),
                                      bootstyle="info", anchor="center")
-        result_pady = 6 if landscape_small or portrait else 10
+        result_pady = 6 if landscape_small else (8 if hd_portrait else (6 if portrait else 10))
         self.result_label.grid(row=1, column=0, sticky="ew", pady=result_pady)
 
         # ─── Footer bar (portrait only) ───
-        if portrait:
+        if portrait or hd_portrait:
             self.footer = tb.Frame(self, bootstyle="dark")
             self.footer.grid(row=2, column=0, sticky="ew", padx=0, pady=0)
 
@@ -549,11 +566,15 @@ class MainApp(tb.Window):
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
         portrait_profile = self.is_portrait_panel
+        hd_portrait = self._is_hd_portrait_panel()
         landscape_embedded = self._is_landscape_panel_profile()
 
         kb_width = screen_w
         if portrait_profile:
             kb_height = max(200, int(screen_h * 0.30))
+            x, y = 0, max(0, screen_h - kb_height)
+        elif hd_portrait:
+            kb_height = max(280, int(screen_h * 0.28))
             x, y = 0, max(0, screen_h - kb_height)
         elif landscape_embedded:
             kb_height = max(220, int(screen_h * 0.36))
@@ -750,7 +771,8 @@ class MainApp(tb.Window):
         for widget in self.keyboard_win.winfo_children(): widget.destroy()
         
         main_frame = tb.Frame(self.keyboard_win)
-        kb_outer_pad = (4, 4) if self.is_portrait_panel else (10, 10)
+        hd_portrait = self._is_hd_portrait_panel()
+        kb_outer_pad = (4, 4) if self.is_portrait_panel else (5, 5) if hd_portrait else (10, 10)
         main_frame.pack(expand=True, fill="both", padx=kb_outer_pad[0], pady=kb_outer_pad[1])
 
         keys = [['1','2','3','4','5','6','7','8','9','0'],
@@ -763,7 +785,7 @@ class MainApp(tb.Window):
         key_font = self._responsive_font(9, True) if compact_profile else ("Helvetica", 11, "bold")
         button_pad_x = 1 if compact_profile else 2
         button_pad_y = 1 if compact_profile else 2
-        key_btn_pad = (1, 1) if self.is_portrait_panel else ((2, 1) if compact_profile else (3, 2))
+        key_btn_pad = (1, 1) if self.is_portrait_panel else ((2, 2) if hd_portrait else ((2, 1) if compact_profile else (3, 2)))
 
         for i in range(len(keys) + 1): # +1 for the bottom row of special keys
             main_frame.grid_rowconfigure(i, weight=1)
@@ -781,7 +803,8 @@ class MainApp(tb.Window):
         bottom_row_idx = len(keys)
         
         bottom_frame = tb.Frame(main_frame)
-        bottom_frame.grid(row=bottom_row_idx, column=0, columnspan=10, sticky="ew", pady=(4 if self.is_portrait_panel else 8, 0))
+        hd_portrait = self._is_hd_portrait_panel()
+        bottom_frame.grid(row=bottom_row_idx, column=0, columnspan=10, sticky="ew", pady=(4 if self.is_portrait_panel else (5 if hd_portrait else 8), 0))
         
         # Configure bottom_frame columns to be responsive
         bottom_frame.grid_columnconfigure(0, weight=2) # Enter
@@ -790,7 +813,7 @@ class MainApp(tb.Window):
         bottom_frame.grid_columnconfigure(3, weight=2) # Clear
         bottom_frame.grid_columnconfigure(4, weight=2) # Close
 
-        special_pad = (2, 1) if compact_profile else (4, 2)
+        special_pad = (2, 1) if compact_profile else ((2, 2) if hd_portrait else (4, 2))
         tb.Button(bottom_frame, text="Enter", bootstyle="success", command=self._kb_enter, takefocus=0,
                   font=key_font, padding=special_pad).grid(row=0, column=0, sticky="nsew", padx=2, pady=1)
         tb.Button(bottom_frame, text="Space", command=lambda: self._kb_key(" "), takefocus=0,
