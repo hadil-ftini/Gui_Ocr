@@ -11,35 +11,43 @@ import os
 import time
 import threading
 import queue
+import platform
 
-
+IS_7INCH = False  # Set to True in __init__ after Tk root exists
+IS_RASPBERRY_PI = platform.system() == "Linux" and any(
+    m in platform.release() for m in ["raspi", "raspberrypi", "raspberry"]
+) if platform.system() == "Linux" else False
 class MainApp(tb.Window):
     def __init__(self):
         super().__init__(themename="superhero")
         self.title("Check Ref - Tunitech")
-        self.is_small_panel = False
-        self.is_portrait_panel = False
+        # Detect 7-inch 800x480 display now that Tk root exists
+        global IS_7INCH
+        IS_7INCH = (self.winfo_screenwidth() == 800 and
+                    self.winfo_screenheight() == 480)
         self._configure_responsive_window()
-        self.is_portrait_panel = self._is_portrait_panel_profile()
-        self.is_small_panel = self._is_small_panel_profile()
        
         self.running = True
         self.references = self.load_references()
         self.adding_new_ref = False
         self.pending_ref = None
         self.selected_reference_name = None
+        self.ok_count = 0
+        self.nok_count = 0
         self.ok_counter_var = tk.IntVar(value=0)
         self.nok_counter_var = tk.IntVar(value=0)
 
-        # Modbus
+        # -- Modbus Client Setup --
+        # IMPORTANT: Set the correct IP address and port for your PLC here
+        # The PLC simulator runs on port 5502 by default, so connect there.
         self.modbus_manager = mm.ModbusManager(host="127.0.0.1", port=5502)
         self.last_poll_time = 0
-        self.poll_interval = 1
+        self.poll_interval = 1  # Poll PLC every 1 second
         self.last_plc_ref = ""
-        self._modbus_was_connected = False
-        self.modbus_enabled = True
+        self._modbus_was_connected = False # Track connection state
+        self.modbus_enabled = True  # Flag to enable/disable Modbus communication
 
-        # Virtual Keyboard
+        # Virtual Keyboard State
         self.keyboard_win = None
         self.current_kb_entry = None
         self.current_kb_var = None
@@ -56,105 +64,37 @@ class MainApp(tb.Window):
 
         # Threading setup
         self.modbus_queue = queue.Queue()
-        self.modbus_write_queue = queue.Queue()  # Separate queue for write operations
+        self.modbus_write_queue = queue.Queue()  # Separate queue for write operations (processed by worker thread)
         self.camera_queue = queue.Queue()
         self.modbus_thread = None
         self.camera_thread = None
-        self._start_background_tasks() # Start background processing threads
+        self._start_background_tasks() # New method to start threads
         self.update_gui_from_queues() # Start the GUI update loop
 
-        # Track whether an OCR test is currently running
+        # Track whether an OCR test is currently running (prevent concurrent tests)
         self._test_in_progress = False
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.bind("<Configure>", self._on_main_window_configure)
-
-    def _screen_size(self):
-        return self.winfo_screenwidth(), self.winfo_screenheight()
-
-    def _is_portrait_panel_profile(self):
-        """Return True for 7-inch portrait panels (~154mm H x 86mm W, 480x800)."""
-        screen_w, screen_h = self._screen_size()
-        if screen_w == 450 and screen_h == 700:
-            return True
-        return screen_h > screen_w and screen_w <= 520 and screen_h >= 700
-
-    def _is_hd_portrait_panel(self):
-        """Return True for 720x1280 HD portrait displays."""
-        screen_w, screen_h = self._screen_size()
-        if screen_w == 720 and screen_h == 1280:
-            return True
-        return screen_h > screen_w and screen_w == 720 and screen_h >= 1200
-
-    def _is_landscape_panel_profile(self):
-        """Return True for 7-inch landscape panels (800x480)."""
-        screen_w, screen_h = self._screen_size()
-        if screen_w == 700 and screen_h == 450:
-            return True
-        return screen_w > screen_h and screen_w <= 820 and screen_h <= 520
-
-    def _is_embedded_panel(self):
-        """Any small Raspberry Pi / 7-inch embedded display."""
-        return self._is_portrait_panel_profile() or self._is_landscape_panel_profile() or self._is_hd_portrait_panel()
-
-    def _is_small_panel_profile(self):
-        """Return True for Raspberry Pi / 7-inch style displays (landscape or portrait)."""
-        return self._is_embedded_panel()
-
-    def _is_hd_panel(self):
-        """Return True for HD portrait panels (720x1280)."""
-        return self._is_hd_portrait_panel()
-
-    def _embedded_sidebar_width(self):
-        if self.is_portrait_panel or self._is_hd_portrait_panel():
-            return 0
-        return 175 if self._is_landscape_panel_profile() else 200
-
-    def _responsive_font(self, base_size, bold=False):
-        """Scale fonts for small embedded panels and touch usage."""
-        if self._is_hd_portrait_panel():
-            scale = 1.10  # Slightly larger for 720x1280
-        elif self.is_portrait_panel:
-            scale = 0.95
-        elif self._is_landscape_panel_profile():
-            scale = 0.88
-        elif self.is_small_panel:
-            scale = 1.05
-        else:
-            scale = 1.0
-        weight = "bold" if bold else "normal"
-        return ("Helvetica", max(8, int(base_size * scale)), weight)
-
-    def _lock_fullscreen_window(self, win_w, win_h):
-        """Fill the physical panel and prevent resize drift on embedded displays."""
-        self.geometry(f"{win_w}x{win_h}+0+0")
-        self.minsize(win_w, win_h)
-        try:
-            self.resizable(False, False)
-        except Exception:
-            pass
+        self.bind("<Configure>", self._on_main_window_configure) # Bind main window configure event
 
     def _configure_responsive_window(self):
-        """Initialize window geometry for the current display."""
-        screen_w, screen_h = self._screen_size()
-        if self._is_embedded_panel():
-            self._lock_fullscreen_window(screen_w, screen_h)
-            return
+        """Fullscreen on all displays."""
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        self.attributes("-fullscreen", True)
+        self.geometry(f"{screen_w}x{screen_h}+0+0")
+        self.resizable(False, False)
 
-        win_w = int(screen_w * 0.96)
-        win_h = int(screen_h * 0.90)
-        win_w = min(win_w, screen_w)
-        win_h = min(win_h, screen_h)
-        pos_x = max(0, (screen_w - win_w) // 2)
-        pos_y = max(0, (screen_h - win_h) // 2)
-        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
-        self.minsize(640, 420)
-        self.resizable(True, True)
+    def _scale_font(self, base_size):
+        """Return a font size scaled for 7-inch 800x480 display."""
+        if IS_7INCH:
+            return max(9, int(base_size * 0.72))
+        return base_size
 
     def on_closing(self):
         """Handles graceful shutdown of the application."""
         print("Closing application...")
-        self.running = False 
+        self.running = False # Signal threads to stop
         if self.modbus_thread and self.modbus_thread.is_alive():
             self.modbus_thread.join(timeout=1)
         if self.camera_thread and self.camera_thread.is_alive():
@@ -167,7 +107,7 @@ class MainApp(tb.Window):
         self.destroy()
 
     def update_result_ui(self, text, bootstyle):
-        """Updates only the UI result label."""
+        """Updates only the UI result label. Does not send to PLC."""
         self.result_label.configure(text=text, bootstyle=bootstyle)
 
     def update_ocr_text(self, detected_text):
@@ -193,13 +133,10 @@ class MainApp(tb.Window):
         sy = preview_h / frame_h
         return (int(x * sx), int(y * sy), int(w * sx), int(h * sy))
 
-    def _create_live_preview(self, parent, width=520, height=300, initial_roi=None, expand_preview=False):
-        pad = 4 if self._is_embedded_panel() else 10
+    def _create_live_preview(self, parent, width=520, height=300, initial_roi=None):
+        p = 4 if IS_7INCH else 10
         preview_container = tb.Frame(parent)
-        if expand_preview:
-            preview_container.grid(row=0, column=0, sticky="nsew", padx=pad, pady=pad)
-        else:
-            preview_container.pack(padx=pad, pady=pad, fill="both", expand=True)
+        preview_container.pack(padx=p, pady=p, fill="both", expand=True)
         preview_label = tb.Label(preview_container, cursor="crosshair")
         preview_label.pack(fill="both", expand=True)
         preview_label.preview_size = (width, height)
@@ -259,29 +196,6 @@ class MainApp(tb.Window):
             preview_label.configure(image=img)
             preview_label.image = img
 
-    def _ref_label_text(self, name=None):
-        prefix = "Ref:" if self.is_portrait_panel else "Reference:"
-        return f"{prefix} {name}" if name else f"{prefix} None"
-
-    def _preview_dimensions(self, default_w=580, default_h=300):
-        screen_w, screen_h = self._screen_size()
-        if self._is_hd_portrait_panel():
-            return screen_w - 20, max(300, int(screen_h * 0.28))
-        if self.is_portrait_panel:
-            return screen_w - 16, max(140, int(screen_h * 0.22))
-        if self._is_landscape_panel_profile():
-            return screen_w - self._embedded_sidebar_width() - 30, max(220, int(screen_h * 0.58))
-        return default_w, default_h
-
-    def _tree_column_widths(self, total_width=None):
-        """Split treeview columns layout effectively."""
-        if total_width is None:
-            total_width = self._screen_size()[0]
-        usable = max(200, total_width - 50)
-        if usable < 500:
-            return int(usable * 0.42), int(usable * 0.58)
-        return int(usable * 0.35), int(usable * 0.65)
-
     def _update_reference_counters(self, match=None):
         selected_ref = next((r for r in self.references if r['name'] == self.selected_reference_name), None)
         if selected_ref is not None:
@@ -296,7 +210,7 @@ class MainApp(tb.Window):
             if hasattr(self, 'nok_label'):
                 self.nok_label.configure(text=f"NOK: {selected_ref.get('nok_count', 0)}")
             if hasattr(self, 'selected_ref_label'):
-                self.selected_ref_label.configure(text=self._ref_label_text(selected_ref['name']))
+                self.selected_ref_label.configure(text=f"Reference: {selected_ref['name']}")
             self.save_references()
         else:
             self.ok_counter_var.set(0)
@@ -306,205 +220,122 @@ class MainApp(tb.Window):
             if hasattr(self, 'nok_label'):
                 self.nok_label.configure(text="NOK: 0")
             if hasattr(self, 'selected_ref_label'):
-                self.selected_ref_label.configure(text=self._ref_label_text())
+                self.selected_ref_label.configure(text="Reference: None")
 
     def _clear_ocr_results(self):
         self.update_result_ui("Ready", "info")
 
-    def _load_logo(self, path, height):
-        """Load and resize a logo for the header bar safely."""
-        try:
-            logo_img = Image.open(path)
-            aspect = logo_img.width / logo_img.height
-            new_width = max(45, int(height * aspect))
-            logo_img = logo_img.resize((new_width, height), Image.Resampling.LANCZOS)
-            return ImageTk.PhotoImage(logo_img)
-        except Exception:
-            return None
-
-    def _build_header_controls(self, parent, combo_width=16):
-        """Shared reference combo + action buttons for compact headers."""
-        self.ref_var = tk.StringVar()
-        self.ref_combo = tb.Combobox(parent, textvariable=self.ref_var,
-                                     values=[r['name'] for r in self.references],
-                                     state="readonly", width=combo_width)
-        self.ref_combo.configure(font=self._responsive_font(9))
-        self.ref_combo.pack(side="left", fill="x", expand=True, padx=(0, 4))
-        self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
-
-        btn_pad = (3, 2) if self._is_landscape_panel_profile() else (4, 3)
-        self.modbus_btn = tb.Button(parent, text="Modbus", bootstyle="success",
-                                    command=self.toggle_modbus, padding=btn_pad)
-        self.modbus_btn.pack(side="right", padx=2)
-        self.test_btn = tb.Button(parent, text="Test", bootstyle="success",
-                                  command=self.test_ocr, padding=btn_pad)
-        self.test_btn.pack(side="right", padx=2)
-
     def setup_ui(self):
-        portrait = self.is_portrait_panel
-        hd_portrait = self._is_hd_portrait_panel()
-        landscape_small = self._is_landscape_panel_profile()
-        small = self.is_small_panel and not portrait and not hd_portrait
-        project_dir = os.path.dirname(os.path.abspath(__file__))
-        logo_path = os.path.join(project_dir, "logo.png")
-        logo2_path = os.path.join(project_dir, "logo2.png")
-        button_pad = (6, 4) if small else (4, 2)
-        logo_h = 20 if landscape_small else (28 if hd_portrait else (22 if portrait else 45))
-
-        if portrait or hd_portrait:
-            self.grid_rowconfigure(0, weight=0)
-            self.grid_rowconfigure(1, weight=1)
-            self.grid_rowconfigure(2, weight=0)
-            self.grid_columnconfigure(0, weight=1)
-        else:
-            self.grid_rowconfigure(0, weight=0)
-            self.grid_rowconfigure(1, weight=1)
-            self.grid_columnconfigure(0, weight=0)
-            self.grid_columnconfigure(1, weight=1)
+        is_small = IS_7INCH
+        sf = self._scale_font
+        # Configure root window grid
+        self.grid_rowconfigure(0, weight=0) # Header
+        self.grid_rowconfigure(1, weight=1) # Main area (Sidebar + Content)
+        self.grid_columnconfigure(0, weight=0) # Sidebar
+        self.grid_columnconfigure(1, weight=1) # Main content
 
         # ─── Header ───
+        hpad = 6 if is_small else 15
+        hpad_sm = 4 if is_small else 8
+        hpady = 4 if is_small else 10
+        hpady_sm = 3 if is_small else 8
+        logo_h = 32 if is_small else 50
+
         self.header = tb.Frame(self, bootstyle="light")
-        header_span = 1 if (portrait or hd_portrait) else 2
-        self.header.grid(row=0, column=0, columnspan=header_span, sticky="ew", padx=0, pady=0)
+        self.header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
+        self.header.columnconfigure(1, weight=1)
 
-        if portrait or hd_portrait or small:
-            pad_x = 4 if portrait else (5 if hd_portrait else 5)
-            top_bar = tb.Frame(self.header, bootstyle="light")
-            top_bar.pack(fill="x", padx=pad_x, pady=(3, 2))
+        try:
+            logo_img = Image.open("logo.png")
+            aspect_ratio = logo_img.width / logo_img.height
+            new_height = logo_h
+            new_width = int(new_height * aspect_ratio)
+            logo_img = logo_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            self.logo_tk = ImageTk.PhotoImage(logo_img)
+            self.logo_label = tb.Label(self.header, image=self.logo_tk)
+            self.logo_label.grid(row=0, column=0, padx=hpad, pady=hpady_sm, sticky="w")
+        except:
+            tb.Label(self.header, text="TUNITECH", font=("Helvetica", 16 if is_small else 22, "bold")).grid(row=0, column=0, padx=hpad, pady=hpady_sm, sticky="w")
+        try:
+            logo2_img = Image.open("logo2.png")
+            aspect_ratio2 = logo2_img.width / logo2_img.height
+            new_height2 = logo_h
+            new_width2 = int(new_height2 * aspect_ratio2)
+            logo2_img = logo2_img.resize((new_width2, new_height2), Image.Resampling.LANCZOS)
+            self.logo2_tk = ImageTk.PhotoImage(logo2_img)
+            self.logo2_label = tb.Label(self.header, image=self.logo2_tk)
+            self.logo2_label.grid(row=0, column=6, padx=hpad, pady=hpady_sm, sticky="e")
+        except Exception as e:
+            print(f"Logo2 not found: {e}")
 
-            logo_tk = self._load_logo(logo_path, logo_h)
-            if logo_tk:
-                self.logo_tk = logo_tk
-                self.logo_label = tb.Label(top_bar, image=self.logo_tk, bootstyle="light")
-                self.logo_label.pack(side="left")
-            else:
-                self.logo_label = tb.Label(top_bar, text="TUNITECH",
-                                           font=self._responsive_font(10, True), bootstyle="light")
-                self.logo_label.pack(side="left")
+        # Modbus Toggle Button
+        self.modbus_btn = tb.Button(self.header, text="Modbus: ON",
+                                    bootstyle="success", command=self.toggle_modbus)
+        self.modbus_btn.grid(row=0, column=4, padx=hpad_sm, pady=hpady, sticky="e")
 
-            if not landscape_small:
-                logo2_tk = self._load_logo(logo2_path, logo_h)
-                if logo2_tk:
-                    self.logo2_tk = logo2_tk
-                    self.logo2_label = tb.Label(top_bar, image=self.logo2_tk, bootstyle="light")
-                    self.logo2_label.pack(side="right")
+        # Test OCR Button
+        self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr)
+        self.test_btn.grid(row=0, column=5, padx=hpad_sm, pady=hpady, sticky="e")
 
-            controls = tb.Frame(self.header, bootstyle="light")
-            controls.pack(fill="x", padx=pad_x, pady=(0, 3))
-            combo_w = 12 if portrait else (16 if hd_portrait else 16)
-            self._build_header_controls(controls, combo_width=combo_w)
-        else:
-            self.header.columnconfigure(1, weight=1)
-            self.header.columnconfigure(2, weight=1)
-            self.header.columnconfigure(3, weight=0)
-            self.header.columnconfigure(4, weight=0)
-            self.header.columnconfigure(5, weight=0)
-            self.header.columnconfigure(6, weight=0)
+        # Reference combobox
+        self.ref_var = tk.StringVar()
+        cb_width = 22 if is_small else 30
+        self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
+                                     values=[r['name'] for r in self.references],
+                                     state="readonly", width=cb_width)
+        self.ref_combo.grid(row=0, column=2, padx=hpad_sm, pady=hpady, sticky="e")
+        self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
 
-            logo_tk = self._load_logo(logo_path, logo_h)
-            if logo_tk:
-                self.logo_tk = logo_tk
-                self.logo_label = tb.Label(self.header, image=self.logo_tk)
-                self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
-            else:
-                self.logo_label = tb.Label(self.header, text="TUNITECH", font=self._responsive_font(18, True))
-                self.logo_label.grid(row=0, column=0, padx=15, pady=8, sticky="w")
+        # ─── Sidebar ───
+        self.sidebar = tb.Frame(self, bootstyle="dark")
+        self.sidebar.grid(row=1, column=0, sticky="nsw", padx=0, pady=0)
 
-            logo2_tk = self._load_logo(logo2_path, logo_h)
-            if logo2_tk:
-                self.logo2_tk = logo2_tk
-                self.logo2_label = tb.Label(self.header, image=self.logo2_tk)
-                self.logo2_label.grid(row=0, column=6, padx=15, pady=8, sticky="e")
+        s_pad = 4 if is_small else 10
+        sidebar_inner = tb.Frame(self.sidebar, bootstyle="dark")
+        sidebar_inner.pack(padx=s_pad, pady=s_pad, fill="both", expand=True)
 
-            self.modbus_btn = tb.Button(self.header, text="🔌 Modbus: ON", bootstyle="success", command=self.toggle_modbus,
-                                        padding=button_pad)
-            self.modbus_btn.grid(row=0, column=4, padx=15, pady=8, sticky="e")
+        tb.Button(sidebar_inner, text="Reference Mgmt",
+                  bootstyle="success", command=self.open_reference_management
+                  ).pack(pady=(s_pad, 3), fill="x")
 
-            self.test_btn = tb.Button(self.header, text="Test", bootstyle="success", command=self.test_ocr,
-                                      padding=button_pad)
-            self.test_btn.grid(row=0, column=5, padx=15, pady=8, sticky="e")
+        lbl_font = (sf(12) if is_small else 14)
+        self.selected_ref_label = tb.Label(
+            sidebar_inner, text="Reference: None",
+            font=("Helvetica", lbl_font, "bold"), bootstyle="secondary")
+        self.selected_ref_label.pack(pady=(s_pad, 3), fill="x")
 
-            self.ref_var = tk.StringVar()
-            self.ref_combo = tb.Combobox(self.header, textvariable=self.ref_var,
-                                         values=[r['name'] for r in self.references],
-                                         state="readonly", width=28)
-            self.ref_combo.configure(font=self._responsive_font(10))
-            self.ref_combo.grid(row=0, column=2, padx=15, pady=8, sticky="e")
-            self.ref_combo.bind("<<ComboboxSelected>>", self.on_ref_selected)
+        ok_font = (sf(15) if is_small else 18)
+        self.ok_label = tb.Label(
+            sidebar_inner, text="OK: 0",
+            font=("Helvetica", ok_font, "bold"), bootstyle="success")
+        self.ok_label.pack(pady=(3, 3), fill="x")
 
-        # ─── Sidebar (landscape small / desktop only) ───
-        if not portrait:
-            sidebar_w = self._embedded_sidebar_width()
-            self.sidebar = tb.Frame(self, bootstyle="dark")
-            self.sidebar.grid(row=1, column=0, sticky="nsw", padx=0, pady=0)
-            if small:
-                self.sidebar.configure(width=sidebar_w)
-                self.sidebar.grid_propagate(False)
-
-            sidebar_inner = tb.Frame(self.sidebar, bootstyle="dark")
-            sidebar_inner.pack(padx=6 if small else 10, pady=8 if small else 10, fill="both", expand=True)
-
-            ref_btn_text = "⚙ Ref Mgmt" if small else "⚙ Reference Management"
-            tb.Button(sidebar_inner, text=ref_btn_text, bootstyle="success",
-                      command=self.open_reference_management,
-                      padding=(4, 3) if small else (6, 4)).pack(pady=6 if small else 8, fill="x")
-            self.selected_ref_label = tb.Label(sidebar_inner, text=self._ref_label_text(),
-                                               font=self._responsive_font(10, True), bootstyle="secondary")
-            self.selected_ref_label.pack(pady=(8, 4), fill="x")
-            self.ok_label = tb.Label(sidebar_inner, text="OK: 0",
-                                     font=self._responsive_font(13 if landscape_small else 14, True), bootstyle="success")
-            self.ok_label.pack(pady=2, fill="x")
-            self.nok_label = tb.Label(sidebar_inner, text="NOK: 0",
-                                      font=self._responsive_font(13 if landscape_small else 14, True), bootstyle="danger")
-            self.nok_label.pack(pady=2, fill="x")
+        self.nok_label = tb.Label(
+            sidebar_inner, text="NOK: 0",
+            font=("Helvetica", ok_font, "bold"), bootstyle="danger")
+        self.nok_label.pack(pady=(3, s_pad), fill="x")
 
         # ─── Main Content ───
-        content_col = 0 if (portrait or hd_portrait) else 1
-        if portrait or hd_portrait:
-            content_pad = (2, 0) if portrait else (4, 3)
-        elif landscape_small:
-            content_pad = (3, 3)
-        elif small:
-            content_pad = (4, 4)
-        else:
-            content_pad = (10, 10)
+        mc_pad = 3 if is_small else 10
         self.main_content = tb.Frame(self)
-        self.main_content.grid(row=1, column=content_col, sticky="nsew", padx=content_pad[0], pady=content_pad[1])
+        self.main_content.grid(row=1, column=1, sticky="nsew", padx=mc_pad, pady=mc_pad)
 
         self.main_content.grid_rowconfigure(0, weight=1)
         self.main_content.grid_rowconfigure(1, weight=0)
+        self.main_content.grid_rowconfigure(2, weight=0)
         self.main_content.grid_columnconfigure(0, weight=1)
 
         self.camera_frame = tb.Labelframe(self.main_content, text="Live Feed")
-        self.camera_frame.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
+        self.camera_frame.grid(row=0, column=0, sticky="nsew", padx=3, pady=3)
         self.camera_label = tb.Label(self.camera_frame, cursor="arrow")
         self.camera_label.pack(fill="both", expand=True)
 
-        self.result_label = tb.Label(self.main_content, text="Ready",
-                                     font=self._responsive_font(13 if landscape_small else (14 if hd_portrait else (12 if portrait else 14)), True),
-                                     bootstyle="info", anchor="center")
-        result_pady = 6 if landscape_small else (8 if hd_portrait else (6 if portrait else 10))
-        self.result_label.grid(row=1, column=0, sticky="ew", pady=result_pady)
-
-        # ─── Footer bar (portrait only) ───
-        if portrait or hd_portrait:
-            self.footer = tb.Frame(self, bootstyle="dark")
-            self.footer.grid(row=2, column=0, sticky="ew", padx=0, pady=0)
-
-            footer_top = tb.Frame(self.footer, bootstyle="dark")
-            footer_top.pack(fill="x", padx=6, pady=(4, 2))
-            tb.Button(footer_top, text="⚙ Ref Mgmt", bootstyle="success", command=self.open_reference_management,
-                      padding=(4, 3)).pack(side="left")
-            self.selected_ref_label = tb.Label(footer_top, text=self._ref_label_text(), font=self._responsive_font(9, True),
-                                             bootstyle="secondary", anchor="w")
-            self.selected_ref_label.pack(side="left", fill="x", expand=True, padx=(6, 0))
-
-            footer_stats = tb.Frame(self.footer, bootstyle="dark")
-            footer_stats.pack(fill="x", padx=6, pady=(0, 4))
-            self.ok_label = tb.Label(footer_stats, text="OK: 0", font=self._responsive_font(12, True), bootstyle="success")
-            self.ok_label.pack(side="left", expand=True, fill="x")
-            self.nok_label = tb.Label(footer_stats, text="NOK: 0", font=self._responsive_font(12, True), bootstyle="danger")
-            self.nok_label.pack(side="right", expand=True, fill="x")
+        result_font = sf(16) if is_small else 18
+        self.result_label = tb.Label(
+            self.main_content, text="Ready",
+            font=("Helvetica", result_font, "bold"),
+            bootstyle="info", anchor="center")
+        self.result_label.grid(row=1, column=0, sticky="ew", pady=mc_pad if is_small else 10)
 
         self.camera_label.bind("<Configure>", self._on_camera_label_configure)
         self.camera_label.bind("<Button-1>", self.on_mouse_down)
@@ -516,7 +347,7 @@ class MainApp(tb.Window):
         self._run_selected_reference_test(show_dialog_on_error=True)
 
     def _run_selected_reference_test(self, show_dialog_on_error=False):
-        """Run OCR test on currently selected reference and write result to PLC."""
+        """Run OCR test on currently selected reference and write result to PLC reg 16."""
         ref_name = self.ref_var.get().strip()
         selected_ref = next((r for r in self.references if r['name'] == ref_name), None)
         if not selected_ref:
@@ -561,32 +392,23 @@ class MainApp(tb.Window):
 
         self.keyboard_win = tb.Toplevel(parent_win)
         self.keyboard_win.title("Keyboard")
+        self.keyboard_win.overrideredirect(IS_7INCH)
 
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        portrait_profile = self.is_portrait_panel
-        hd_portrait = self._is_hd_portrait_panel()
-        landscape_embedded = self._is_landscape_panel_profile()
-
-        kb_width = screen_w
-        if portrait_profile:
-            kb_height = max(200, int(screen_h * 0.30))
-            x, y = 0, max(0, screen_h - kb_height)
-        elif hd_portrait:
-            kb_height = max(280, int(screen_h * 0.28))
-            x, y = 0, max(0, screen_h - kb_height)
-        elif landscape_embedded:
-            kb_height = max(220, int(screen_h * 0.36))
-            x, y = 0, max(0, screen_h - kb_height - 2)
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        if IS_7INCH:
+            kb_width = sw
+            kb_height = int(sh * 0.55)
+            x, y = 0, sh - kb_height
         else:
-            kb_width = min(900, int(screen_w * 0.75))
+            kb_width = min(800, int(sw * 0.6))
             kb_height = 350
-            x = max(0, (screen_w - kb_width) // 2)
-            y = max(0, screen_h - kb_height - 50)
-        self.keyboard_win.geometry(f"{kb_width}x{kb_height}+{x}+{y}")
+            x = (sw // 2) - (kb_width // 2)
+            y = sh - kb_height - 50
 
+        self.keyboard_win.geometry(f"{kb_width}x{kb_height}+{x}+{y}")
         self.keyboard_win.attributes("-topmost", True)
-        self.keyboard_win.resizable(True, True)
+        self.keyboard_win.resizable(False, False)
         self.keyboard_win.protocol("WM_DELETE_WINDOW", self._close_keyboard)
         self.keyboard_win.transient(parent_win)
         self.keyboard_win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == self.keyboard_win else None)
@@ -609,101 +431,31 @@ class MainApp(tb.Window):
         self.current_next_widget = None
         self._closing_keyboard = False
 
-    def _create_child_window(self, title, width, height, parent=None, resizable=(True, True), center=True, fullscreen=False):
+    def _create_child_window(self, title, width, height, parent=None, resizable=(True, True), center=True):
         if parent is None:
             parent = self
-        screen_width, screen_height = self._screen_size()
-        embedded = self._is_embedded_panel()
-
-        if fullscreen and embedded:
-            if self._is_landscape_panel_profile():
-                width, height = 780, 440
-            else:
-                width, height = screen_width, screen_height
-            x, y = 0, 0
-            center = False
-            resizable = (False, False)
-        elif embedded:
-            width = min(width, screen_width)
-            height = min(height, screen_height)
-            x = max(0, (screen_width - width) // 2)
-            y = max(0, (screen_height - height) // 2)
-            center = False
-        else:
-            x = max(0, (screen_width - width) // 2)
-            y = max(0, (screen_height - height) // 2)
-
         win = tb.Toplevel(parent)
         win.title(title)
-        win.geometry(f"{width}x{height}+{x}+{y}")
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        # Clamp to screen bounds on small displays
+        if IS_7INCH:
+            width = min(width, sw - 20)
+            height = min(height, sh - 60)
+            win.overrideredirect(True)
+        if center:
+            x = (sw - width) // 2
+            y = (sh - height) // 2
+            win.geometry(f"{width}x{height}+{x}+{y}")
+        else:
+            win.geometry(f"{width}x{height}")
         win.resizable(*resizable)
-        if fullscreen and embedded:
-            win.minsize(width, height)
         win.transient(parent)
         win.attributes("-topmost", True)
         win.lift()
         win.focus_force()
         win.after(200, lambda: win.attributes("-topmost", False))
         return win
-
-    def _build_management_buttons(self, parent, close_cmd):
-        """Action buttons sized cleanly for management view panels."""
-        screen_w = self._screen_size()[0]
-        btn_pad = (3, 2) if screen_w <= 520 else (10, 4)
-        buttons = [
-            ("Add", "success", self._add_reference),
-            ("Edit", "warning", self._edit_reference),
-            ("Remove", "danger", self._remove_reference),
-            ("Close", "secondary", close_cmd),
-        ]
-        if screen_w <= 520:
-            parent.columnconfigure(0, weight=1)
-            parent.columnconfigure(1, weight=1)
-            for i, (text, style, cmd) in enumerate(buttons):
-                tb.Button(parent, text=text, bootstyle=style, command=cmd, padding=btn_pad).grid(
-                    row=i // 2, column=i % 2, sticky="ew", padx=3, pady=2)
-        else:
-            for text, style, cmd in buttons:
-                tb.Button(parent, text=text, bootstyle=style, command=cmd, padding=btn_pad).pack(side="left", padx=6)
-
-    def _build_ref_form_window(self, win, name_var, text_var, save_text, save_cmd):
-        """Compact form layout for adding/editing reference configurations."""
-        embedded = self._is_embedded_panel()
-        win.grid_rowconfigure(0, weight=1)
-        win.grid_rowconfigure(1, weight=0)
-        win.grid_columnconfigure(0, weight=1)
-
-        form_pad = 6 if embedded else 15
-        container = tb.Frame(win, padding=form_pad)
-        container.grid(row=1, column=0, sticky="ew")
-        container.grid_columnconfigure(0, weight=1)
-
-        lbl_font = self._responsive_font(10, True) if embedded else ("Helvetica", 12, "bold")
-        entry_font = self._responsive_font(11) if embedded else ("Helvetica", 14)
-        entry_pady = (0, 6) if embedded else (0, 15)
-
-        tb.Label(container, text="Reference Name:", font=lbl_font).grid(row=0, column=0, sticky="w", pady=(0, 2))
-        e1 = tb.Entry(container, textvariable=name_var, font=entry_font)
-        e1.grid(row=1, column=0, sticky="ew", pady=entry_pady)
-
-        tb.Label(container, text="Expected Text:", font=lbl_font).grid(row=2, column=0, sticky="w", pady=(0, 2))
-        e2 = tb.Entry(container, textvariable=text_var, font=entry_font)
-        e2.grid(row=3, column=0, sticky="ew", pady=entry_pady)
-
-        def trigger_e1(e):
-            e1.focus_set()
-            e1.icursor(tk.END)
-            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
-        def trigger_e2(e):
-            e2.focus_set()
-            e2.icursor(tk.END)
-            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
-        e1.bind("<Button-1>", trigger_e1)
-        e2.bind("<Button-1>", trigger_e2)
-
-        tb.Button(container, text=save_text, bootstyle="success-outline", command=save_cmd,
-                  padding=(4, 3) if embedded else (6, 4)).grid(row=4, column=0, sticky="ew", pady=(2, 4))
-        return e1, e2
 
     def _pause_main_camera_display(self):
         self.main_camera_display = False
@@ -724,6 +476,11 @@ class MainApp(tb.Window):
     def _show_top_message(self, title, message, width=380, height=150):
         popup = tb.Toplevel(self)
         popup.title(title)
+        sf = self._scale_font
+        if IS_7INCH:
+            width = min(width, self.winfo_screenwidth() - 40)
+            height = min(height, self.winfo_screenheight() - 80)
+            popup.overrideredirect(True)
         screen_width = popup.winfo_screenwidth()
         screen_height = popup.winfo_screenheight()
         x = (screen_width // 2) - (width // 2)
@@ -734,10 +491,15 @@ class MainApp(tb.Window):
         popup.attributes("-topmost", True)
         popup.lift()
         popup.focus_force()
-        container = tb.Frame(popup, padding=15)
+
+        container = tb.Frame(popup, padding=10 if IS_7INCH else 15)
         container.pack(fill="both", expand=True)
-        tb.Label(container, text=message, wraplength=width - 30, font=("Helvetica", 12), bootstyle="success", anchor="center", justify="center").pack(fill="both", expand=True, pady=(0, 10))
-        tb.Button(container, text="OK", bootstyle="primary", command=popup.destroy).pack(pady=(0, 5))
+        tb.Label(container, text=message, wraplength=width - 20,
+                 font=("Helvetica", sf(11) if IS_7INCH else 12),
+                 bootstyle="success", anchor="center", justify="center"
+                 ).pack(fill="both", expand=True, pady=(0, 8))
+        tb.Button(container, text="OK", bootstyle="primary",
+                  command=popup.destroy).pack(pady=(0, 5))
         return popup
 
     def _kb_key(self, char):
@@ -758,62 +520,81 @@ class MainApp(tb.Window):
         if self.current_next_widget and self.current_next_widget.winfo_exists():
             self.current_next_widget.focus_set()
             self.after(50, lambda: self.show_virtual_keyboard(
-                self.current_next_widget, None, getattr(self.current_next_widget, "associated_var", None)
+                self.current_next_widget, None,
+                getattr(self.current_next_widget, "associated_var", None)
             ))
         else:
             self._close_keyboard()
 
     def _build_keyboard_layout(self):
-        if not self.keyboard_win or not self.keyboard_win.winfo_exists():
-            return
-        for widget in self.keyboard_win.winfo_children():
-            widget.destroy()
+        if not self.keyboard_win or not self.keyboard_win.winfo_exists(): return
+        for widget in self.keyboard_win.winfo_children(): widget.destroy()
+
+        kb_pad = 2 if IS_7INCH else 10
         main_frame = tb.Frame(self.keyboard_win)
-        hd_portrait = self._is_hd_portrait_panel()
-        kb_outer_pad = (4, 4) if self.is_portrait_panel else (5, 5) if hd_portrait else (10, 10)
-        main_frame.pack(expand=True, fill="both", padx=kb_outer_pad[0], pady=kb_outer_pad[1])
+        main_frame.pack(expand=True, fill="both", padx=kb_pad, pady=kb_pad)
+
         keys = [['1','2','3','4','5','6','7','8','9','0'],
                 ['q','w','e','r','t','y','u','i','o','p'],
                 ['a','s','d','f','g','h','j','k','l'],
                 ['z','x','c','v','b','n','m']]
-        compact_profile = self._is_embedded_panel()
-        key_font = self._responsive_font(9, True) if compact_profile else ("Helvetica", 11, "bold")
-        button_pad_x = 1 if compact_profile else 2
-        button_pad_y = 1 if compact_profile else 2
-        key_btn_pad = (1, 1) if self.is_portrait_panel else ((2, 2) if hd_portrait else ((2, 1) if compact_profile else (3, 2)))
+
+        kpadx = 1 if IS_7INCH else 2
+        kpady = 1 if IS_7INCH else 2
+
         for i in range(len(keys) + 1):
             main_frame.grid_rowconfigure(i, weight=1)
         for i in range(10):
             main_frame.grid_columnconfigure(i, weight=1)
+
         for r_idx, row_keys in enumerate(keys):
             col_offset = (10 - len(row_keys)) // 2
             for c_idx, key in enumerate(row_keys):
-                btn = tb.Button(main_frame, text=key.upper(), command=lambda k=key: self._kb_key(k), takefocus=0, font=key_font, padding=key_btn_pad)
-                btn.grid(row=r_idx, column=c_idx + col_offset, sticky="nsew", padx=button_pad_x, pady=button_pad_y)
+                btn = tb.Button(main_frame, text=key.upper(),
+                                command=lambda k=key: self._kb_key(k), takefocus=0)
+                btn.grid(row=r_idx, column=c_idx + col_offset,
+                         sticky="nsew", padx=kpadx, pady=kpady)
+
         bottom_row_idx = len(keys)
         bottom_frame = tb.Frame(main_frame)
-        bottom_frame.grid(row=bottom_row_idx, column=0, columnspan=10, sticky="ew", pady=(4 if self.is_portrait_panel else (5 if hd_portrait else 8), 0))
+        bottom_frame.grid(row=bottom_row_idx, column=0, columnspan=10,
+                          sticky="ew", pady=(kpady + 1, 0))
+
         bottom_frame.grid_columnconfigure(0, weight=2)
         bottom_frame.grid_columnconfigure(1, weight=5)
         bottom_frame.grid_columnconfigure(2, weight=2)
         bottom_frame.grid_columnconfigure(3, weight=2)
         bottom_frame.grid_columnconfigure(4, weight=2)
-        special_pad = (2, 1) if compact_profile else ((2, 2) if hd_portrait else (4, 2))
-        tb.Button(bottom_frame, text="Enter", bootstyle="success", command=self._kb_enter, takefocus=0, font=key_font, padding=special_pad).grid(row=0, column=0, sticky="nsew", padx=2, pady=1)
-        tb.Button(bottom_frame, text="Space", command=lambda: self._kb_key(" "), takefocus=0, font=key_font, padding=special_pad).grid(row=0, column=1, sticky="nsew", padx=2, pady=1)
-        tb.Button(bottom_frame, text="⌫", bootstyle="warning", command=self._kb_backspace, takefocus=0, font=key_font, padding=special_pad).grid(row=0, column=2, sticky="nsew", padx=2, pady=1)
-        tb.Button(bottom_frame, text="Clear", bootstyle="danger", command=self._kb_clear, takefocus=0, font=key_font, padding=special_pad).grid(row=0, column=3, sticky="nsew", padx=2, pady=1)
-        tb.Button(bottom_frame, text="Close", bootstyle="secondary", command=self._close_keyboard, takefocus=0, font=key_font, padding=special_pad).grid(row=0, column=4, sticky="nsew", padx=2, pady=1)
+
+        bpad = kpadx
+        tb.Button(bottom_frame, text="Enter", bootstyle="success",
+                  command=self._kb_enter, takefocus=0
+                  ).grid(row=0, column=0, sticky="nsew", padx=bpad)
+        tb.Button(bottom_frame, text="Space",
+                  command=lambda: self._kb_key(" "), takefocus=0
+                  ).grid(row=0, column=1, sticky="nsew", padx=bpad)
+        tb.Button(bottom_frame, text="Bksp", bootstyle="warning",
+                  command=self._kb_backspace, takefocus=0
+                  ).grid(row=0, column=2, sticky="nsew", padx=bpad)
+        tb.Button(bottom_frame, text="Clear", bootstyle="danger",
+                  command=self._kb_clear, takefocus=0
+                  ).grid(row=0, column=3, sticky="nsew", padx=bpad)
+        tb.Button(bottom_frame, text="Close", bootstyle="secondary",
+                  command=self._close_keyboard, takefocus=0
+                  ).grid(row=0, column=4, sticky="nsew", padx=bpad)
 
     # ─── REFERENCE MANAGEMENT ───
     def open_reference_management(self):
-        pw_w = min(280, self._screen_size()[0] - 20)
-        pw_h = 130 if self._is_embedded_panel() else 150
+        sf = self._scale_font
+        pw_w = 300 if not IS_7INCH else 280
+        pw_h = 150 if not IS_7INCH else 140
         password_win = self._create_child_window("Enter Password", pw_w, pw_h, parent=self, resizable=(False, False))
-        tb.Label(password_win, text="Password:", font=("Helvetica", 12)).pack(pady=10)
+
+        tb.Label(password_win, text="Password:", font=("Helvetica", sf(12))).pack(pady=8 if IS_7INCH else 10)
         password_var = tk.StringVar()
-        password_entry = tb.Entry(password_win, textvariable=password_var, show="*", font=("Helvetica", 14))
-        password_entry.pack(pady=5)
+        pw_font = sf(14)
+        password_entry = tb.Entry(password_win, textvariable=password_var, show="*", font=("Helvetica", pw_font))
+        password_entry.pack(pady=4 if IS_7INCH else 5)
 
         def check_password():
             if password_var.get().strip().upper() == "TUNITECH":
@@ -824,271 +605,749 @@ class MainApp(tb.Window):
 
         def on_enter(event):
             check_password()
+
         password_entry.bind("<Return>", on_enter)
         password_entry.bind("<Button-1>", lambda e: self.show_virtual_keyboard(password_entry, None, password_var))
+
         tb.Button(password_win, text="Enter", bootstyle="success", command=check_password).pack(pady=10)
 
     def _open_management_window(self):
-        win_w = 715 if self._is_hd_portrait_panel() else 720
-        win_h = 800 if self._is_hd_portrait_panel() else 520
-        self.mgmt_win = self._create_child_window("Reference Management", win_w, win_h, fullscreen=True)
-        self._pause_main_camera_display()
+        mgmt_w = 680 if IS_7INCH else 720
+        mgmt_h = 460 if IS_7INCH else 520
+        win = self._create_child_window("Reference Management", mgmt_w, mgmt_h, parent=self)
+        if not IS_7INCH:
+            win.minsize(680, 460)
+        win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
 
-        # Set up a responsive grid structure for the Management Frame layout
-        self.mgmt_win.grid_rowconfigure(0, weight=1)
-        self.mgmt_win.grid_rowconfigure(1, weight=0)
-        self.mgmt_win.grid_columnconfigure(0, weight=1)
+        # Theme control at top
+        sf = self._scale_font
+        theme_frame = tb.Frame(win)
+        theme_frame.pack(pady=6 if IS_7INCH else 10)
+        tb.Label(theme_frame, text="Theme:",
+                 font=("Helvetica", sf(12))).pack(side="left", padx=4)
+        self.theme_mb = tb.Menubutton(theme_frame, text="Themes", bootstyle="primary")
+        self.theme_mb.pack(side="left")
+        self.theme_menu = tb.Menu(self.theme_mb)
+        for theme in tm.get_available_themes():
+            self.theme_menu.add_command(label=theme, command=lambda t=theme: self.change_theme(t))
+        self.theme_mb["menu"] = self.theme_menu
 
-        main_panel = tb.Frame(self.mgmt_win, padding=10)
-        main_panel.grid(row=0, column=0, sticky="nsew")
-        main_panel.grid_columnconfigure(0, weight=1)
-        main_panel.grid_rowconfigure(0, weight=1)
-
-        # Left / Top side List components
-        list_frame = tb.Labelframe(main_panel, text="Saved References", padding=5)
-        list_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        list_frame.grid_columnconfigure(0, weight=1)
-        list_frame.grid_rowconfigure(0, weight=1)
-
-        columns = ("name", "text")
-        self.tree = tb.Treeview(list_frame, columns=columns, show="headings", bootstyle="primary")
-        self.tree.heading("name", text="Ref Name")
-        self.tree.heading("text", text="Expected String Alignment")
-        
-        # Calculate dynamic column width allocation rules
-        w_name, w_text = self._tree_column_widths(win_w)
-        self.tree.column("name", width=w_name, anchor="w")
-        self.tree.column("text", width=w_text, anchor="w")
-        self.tree.grid(row=0, column=0, sticky="nsew")
-
-        scrollbar = tb.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-
-        # Layout operation buttons
-        btn_container = tb.Frame(self.mgmt_win, padding=10)
-        btn_container.grid(row=1, column=0, sticky="ew", pady=5)
-        
-        def close_mgmt():
-            self._resume_main_camera_display()
-            self._close_keyboard()
-            self.mgmt_win.destroy()
-
-        self._build_management_buttons(btn_container, close_mgmt)
-        self._populate_reference_tree()
-
-    def _populate_reference_tree(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        # References list
+        l_pad = 8 if IS_7INCH else 15
+        list_frame = tb.Frame(win)
+        list_frame.pack(fill="both", expand=True, padx=l_pad, pady=(6, 3))
+        columns = ("name", "expected_text")
+        self.ref_tree = tb.Treeview(list_frame, columns=columns, show="headings", bootstyle="info")
+        self.ref_tree.heading("name", text="Reference Name")
+        self.ref_tree.heading("expected_text", text="Expected OCR Text")
+        self.ref_tree.column("name", width=180 if IS_7INCH else 220)
+        self.ref_tree.column("expected_text", width=240 if IS_7INCH else 300)
         for ref in self.references:
-            self.tree.insert("", "end", values=(ref['name'], ref['expected_text']))
+            self.ref_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
+        self.ref_tree.pack(fill="both", expand=True)
+
+        # Store reference to tree for refreshing
+        self.management_tree = self.ref_tree
+
+        # Buttons at bottom
+        btn_pad = 6 if IS_7INCH else 10
+        btn_frame = tb.Frame(win)
+        btn_frame.pack(pady=(3, 8))
+        tb.Button(btn_frame, text="Add", bootstyle="success",
+                  command=self._add_reference).pack(side="left", padx=btn_pad)
+        tb.Button(btn_frame, text="Edit", bootstyle="warning",
+                  command=self._edit_reference).pack(side="left", padx=btn_pad)
+        tb.Button(btn_frame, text="Remove", bootstyle="danger",
+                  command=self._remove_reference).pack(side="left", padx=btn_pad)
+        tb.Button(btn_frame, text="Close", bootstyle="secondary",
+                  command=win.destroy).pack(side="left", padx=btn_pad)
 
     def _add_reference(self):
-        self._open_reference_form("Add New Reference", "", "", self._save_new_reference)
+        self._pause_main_camera_display()
+        self.open_settings()
 
     def _edit_reference(self):
-        selected = self.tree.selection()
+        selected = self.management_tree.selection()
         if not selected:
-            tb.dialogs.Messagebox.show_warning("Please select a reference entry to modify.", title="No Selection", parent=self.mgmt_win)
+            tb.dialogs.Messagebox.show_warning("Please select a reference to edit.", title="No Selection", parent=self)
             return
-        item_vals = self.tree.item(selected[0], "values")
-        self._open_reference_form(f"Edit: {item_vals[0]}", item_vals[0], item_vals[1], self._save_edited_reference)
-
-    def _open_reference_form(self, title, name, text, save_callback):
-        form_win = self._create_child_window(title, 420, 310, parent=self.mgmt_win, resizable=(False, False))
-        name_var = tk.StringVar(value=name)
-        text_var = tk.StringVar(value=text)
-
-        def on_save():
-            if save_callback(name_var.get().strip(), text_var.get().strip(), name):
-                form_win.destroy()
-                self._populate_reference_tree()
-
-        self._build_ref_form_window(form_win, name_var, text_var, "Save Reference Pattern", on_save)
-
-    def _save_new_reference(self, name, text, original_name=None):
-        if not name or not text:
-            tb.dialogs.Messagebox.show_error("Fields cannot be left blank.", title="Validation Error", parent=self.mgmt_win)
-            return False
-        if any(r['name'].upper() == name.upper() for r in self.references):
-            tb.dialogs.Messagebox.show_error("A unique reference configuration pattern already exists.", title="Duplicate Error", parent=self.mgmt_win)
-            return False
-        
-        self.references.append({
-            "name": name, "expected_text": text, "roi": [50, 50, 150, 80],
-            "ok_count": 0, "nok_count": 0
-        })
-        self.save_references()
-        self._update_combo_options()
-        return True
-
-    def _save_edited_reference(self, name, text, original_name):
-        if not name or not text:
-            tb.dialogs.Messagebox.show_error("Fields cannot be empty.", title="Validation Error", parent=self.mgmt_win)
-            return False
-        
-        ref = next((r for r in self.references if r['name'] == original_name), None)
-        if ref:
-            ref['name'] = name
-            ref['expected_text'] = text
-            self.save_references()
-            self._update_combo_options()
-            return True
-        return False
+        item = self.management_tree.item(selected[0])
+        name, expected_text = item['values']
+        selected_ref = next((r for r in self.references if r['name'] == name and r['expected_text'] == expected_text), None)
+        if not selected_ref:
+            tb.dialogs.Messagebox.show_error("Unable to find the selected reference.", title="Error", parent=self)
+            return
+        self._open_edit_window(selected_ref)
 
     def _remove_reference(self):
-        selected = self.tree.selection()
+        selected = self.management_tree.selection()
         if not selected:
+            tb.dialogs.Messagebox.show_warning("Please select a reference to remove.", title="No Selection", parent=self)
             return
-        item_vals = self.tree.item(selected[0], "values")
-        confirm = tb.dialogs.Messagebox.show_question(f"Are you sure you want to delete {item_vals[0]}?", title="Confirm Action", parent=self.mgmt_win)
-        if confirm == "Yes":
-            self.references = [r for r in self.references if r['name'] != item_vals[0]]
+        if tb.dialogs.Messagebox.yesno("Are you sure you want to remove the selected reference?", title="Confirm Remove", parent=self):
+            item = self.management_tree.item(selected[0])
+            name = item['values'][0]
+            self.references = [r for r in self.references if r['name'] != name]
             self.save_references()
-            self._populate_reference_tree()
-            self._update_combo_options()
+            self.update_ref_combo()
+            self.management_tree.delete(selected[0])
+            if self.selected_reference_name == name:
+                self.selected_reference_name = None
+                self.camera.clear_roi()
+                self.camera.expected_text = ""
+                self.ref_var.set("")
+                self.update_result_ui("Reference removed", "warning")
+                if hasattr(self, 'selected_ref_label'):
+                    self.selected_ref_label.configure(text="Reference: None")
+                if hasattr(self, 'ok_label'):
+                    self.ok_label.configure(text="OK: 0")
+                if hasattr(self, 'nok_label'):
+                    self.nok_label.configure(text="NOK: 0")
 
-    def _update_combo_options(self):
-        names = [r['name'] for r in self.references]
-        self.ref_combo.configure(values=names)
-        if self.ref_var.get() not in names:
+    def _refresh_management_tree(self):
+        if hasattr(self, 'management_tree') and self.management_tree.winfo_exists():
+            self.management_tree.delete(*self.management_tree.get_children())
+            for ref in self.references:
+                self.management_tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
+
+    def _open_edit_window(self, ref):
+        sf = self._scale_font
+        edit_w = 600 if IS_7INCH else 620
+        edit_h = 460 if IS_7INCH else 560
+        win = self._create_child_window("Edit Reference", edit_w, edit_h, parent=self)
+        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree(), self._resume_main_camera_display()] if e.widget == win else None)
+        self._pause_main_camera_display()
+
+        prev_w = 560 if IS_7INCH else 580
+        prev_h = 220 if IS_7INCH else 300
+        preview_label = self._create_live_preview(win, width=prev_w, height=prev_h, initial_roi=ref.get('roi'))
+
+        cont_pad = 8 if IS_7INCH else 15
+        container = tb.Frame(win, padding=cont_pad)
+        container.pack(fill="both", expand=True)
+        container.grid_columnconfigure(0, weight=1)
+
+        lb_font = sf(12)
+        tb.Label(container, text="Reference Name:",
+                 font=("Helvetica", lb_font, "bold")).grid(row=0, column=0, sticky="w", pady=(6, 3))
+        name_var = tk.StringVar(value=ref.get('name', ''))
+        en_font = sf(14)
+        e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", en_font))
+        e1.grid(row=1, column=0, sticky="ew", pady=(0, 6 if IS_7INCH else 15))
+
+        tb.Label(container, text="Expected Text:",
+                 font=("Helvetica", lb_font, "bold")).grid(row=2, column=0, sticky="w", pady=(0, 3))
+        text_var = tk.StringVar(value=ref.get('expected_text', ''))
+        e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", en_font))
+        e2.grid(row=3, column=0, sticky="ew", pady=(0, 6 if IS_7INCH else 15))
+
+        def trigger_e1(e):
+            e1.focus_set()
+            e1.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
+        def trigger_e2(e):
+            e2.focus_set()
+            e2.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
+        e1.bind("<Button-1>", trigger_e1)
+        e2.bind("<Button-1>", trigger_e2)
+
+        original_name = ref.get('name')
+
+        def confirm():
+            new_name = name_var.get().strip()
+            new_expected = text_var.get().strip()
+            if not new_name or not new_expected:
+                tb.dialogs.Messagebox.show_error("All fields are required!", title="Error", parent=win)
+                return
+            if new_name != original_name and any(r['name'] == new_name for r in self.references):
+                tb.dialogs.Messagebox.show_error("Another reference already uses that name.", title="Duplicate Name", parent=win)
+                return
+            selected_roi = preview_label.local_roi
+            if selected_roi is None:
+                tb.dialogs.Messagebox.show_warning("Please select an ROI on the live preview.", title="ROI Required", parent=win)
+                return
+            frame_roi = self._preview_to_frame_roi(selected_roi, preview_label.preview_size)
+
+            ref['name'] = new_name
+            ref['expected_text'] = new_expected
+            ref['roi'] = frame_roi
+            if 'ok_count' not in ref:
+                ref['ok_count'] = 0
+            if 'nok_count' not in ref:
+                ref['nok_count'] = 0
+
+            if self.selected_reference_name == original_name:
+                self.selected_reference_name = new_name
+                self.ref_var.set(new_name)
+                self.camera.expected_text = new_expected
+
+            self.save_references()
+            self.update_ref_combo()
+            self._refresh_management_tree()
+            self._close_keyboard()
+            win.destroy()
+            self.update_result_ui(f"Reference '{new_name}' updated.", "success")
+
+        confirm_btn = tb.Button(container, text="SAVE CHANGES", bootstyle="success-outline", command=confirm)
+        confirm_btn.grid(row=4, column=0, sticky="ew", pady=(0, 6 if IS_7INCH else 10))
+
+    # ─── SETTINGS WINDOW ───
+    def open_settings(self):
+        sf = self._scale_font
+        set_w = 600 if IS_7INCH else 620
+        set_h = 480 if IS_7INCH else 620
+        win = self._create_child_window("Add Reference", set_w, set_h, parent=self)
+        win.bind("<Destroy>", lambda e: [self._close_keyboard() if e.widget == win else None, self._refresh_management_tree(), self._resume_main_camera_display()] if e.widget == win else None)
+        self._pause_main_camera_display()
+
+        prev_w = 560 if IS_7INCH else 580
+        prev_h = 220 if IS_7INCH else 320
+        preview_label = self._create_live_preview(win, width=prev_w, height=prev_h)
+
+        cont_pad = 8 if IS_7INCH else 15
+        container = tb.Frame(win, padding=cont_pad)
+        container.pack(fill="both", expand=True)
+        container.grid_columnconfigure(0, weight=1)
+
+        lb_font = sf(12)
+        tb.Label(container, text="Reference Name:",
+                 font=("Helvetica", lb_font, "bold")).grid(row=0, column=0, sticky="w", pady=(6, 3))
+        name_var = tk.StringVar()
+        en_font = sf(14)
+        e1 = tb.Entry(container, textvariable=name_var, font=("Helvetica", en_font))
+        e1.grid(row=1, column=0, sticky="ew", pady=(0, 6 if IS_7INCH else 15))
+
+        tb.Label(container, text="Expected Text:",
+                 font=("Helvetica", lb_font, "bold")).grid(row=2, column=0, sticky="w", pady=(0, 3))
+        text_var = tk.StringVar()
+        e2 = tb.Entry(container, textvariable=text_var, font=("Helvetica", en_font))
+        e2.grid(row=3, column=0, sticky="ew", pady=(0, 6 if IS_7INCH else 15))
+
+        def trigger_e1(e):
+            e1.focus_set()
+            e1.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e1, e2, name_var))
+        def trigger_e2(e):
+            e2.focus_set()
+            e2.icursor(tk.END)
+            self.after(100, lambda: self.show_virtual_keyboard(e2, None, text_var))
+        e1.bind("<Button-1>", trigger_e1)
+        e2.bind("<Button-1>", trigger_e2)
+
+        def confirm():
+            name = name_var.get().strip()
+            expected = text_var.get().strip()
+            selected_roi = preview_label.local_roi
+            if not name or not expected:
+                tb.dialogs.Messagebox.show_error("All fields are required!", title="Error", parent=win)
+                return
+            if not selected_roi:
+                tb.dialogs.Messagebox.show_warning("Please select an ROI on the live preview.", title="ROI Required", parent=win)
+                return
+            frame_roi = self._preview_to_frame_roi(selected_roi, preview_label.preview_size)
+            new_ref = {"name": name, "expected_text": expected, "roi": frame_roi, "ok_count": 0, "nok_count": 0}
+            self.references.append(new_ref)
+            self.save_references()
+            self.update_ref_combo()
+            self._refresh_management_tree()
+            self._close_keyboard()
+            win.destroy()
+            self.camera.clear_roi()
             self.ref_var.set("")
+            self._clear_ocr_results()
+            self.update_result_ui(f"Reference '{name}' added.", "success")
+
+        confirm_btn = tb.Button(container, text="SAVE REFERENCE", bootstyle="success-outline", command=confirm)
+        confirm_btn.grid(row=4, column=0, sticky="ew", pady=(0, 6 if IS_7INCH else 10))
+
+    # ─── ARCHIVE & PASSWORD WINDOW ───
+    def open_archive(self):
+        arch_w = 660 if IS_7INCH else 700
+        arch_h = 420 if IS_7INCH else 460
+        archive_win = self._create_child_window("Reference Archive", arch_w, arch_h, parent=self)
+
+        sf = self._scale_font
+        lbl = tb.Label(archive_win,
+                       text="Saved References & Logs",
+                       font=("Helvetica", sf(14) if IS_7INCH else 16, "bold"),
+                       bootstyle="primary")
+        lbl.pack(pady=6 if IS_7INCH else 10)
+
+        columns = ("name", "expected_text")
+        tree = tb.Treeview(archive_win, columns=columns, show="headings", bootstyle="info")
+
+        tree.heading("name", text="Reference Name")
+        tree.heading("expected_text", text="Expected OCR Text")
+
+        tree.column("name", width=160 if IS_7INCH else 200)
+        tree.column("expected_text", width=260 if IS_7INCH else 340)
+
+        for ref in self.references:
+            tree.insert("", tk.END, values=(ref["name"], ref["expected_text"]))
+
+        tpad = 8 if IS_7INCH else 20
+        tree.pack(fill="both", expand=True, padx=tpad, pady=tpad)
+
+        # Add a close button
+        close_btn = tb.Button(archive_win, text="Close", bootstyle="secondary", command=archive_win.destroy)
+        close_btn.pack(pady=10)
+    # ─── MOUSE / ROI EVENTS ───
+    def on_mouse_up(self, event):
+        if not self.rect_start:
+            return
+        x2, y2 = event.x, event.y
+
+        scale_x = 1 / (self.camera.display_scale_x or 1.0)
+        scale_y = 1 / (self.camera.display_scale_y or 1.0)
+
+        x1, y1 = self.rect_start
+        ui_x, ui_y = min(x1, x2), min(y1, y2)
+        ui_w, ui_h = abs(x2 - x1), abs(y2 - y1)
+        rx, ry = int(ui_x * scale_x), int(ui_y * scale_y)
+        rw, rh = int(ui_w * scale_x), int(ui_h * scale_y)
+
+        self.camera.temp_roi = None
+
+        if rw < 5 or rh < 5:
+            if self.adding_new_ref:
+                self.update_result_ui("ROI too small!", "danger")
+            self._roi_dragging = False
+            self.rect_start = None
+            return
+
+        if self.adding_new_ref and self.pending_ref and self._roi_dragging:
+            if any(r['name'] == self.pending_ref['name'] for r in self.references):
+                self.update_result_ui("Reference name exists!", "danger")
+            else:
+                self.pending_ref["roi"] = (rx, ry, rw, rh)
+                self.references.append(self.pending_ref)
+                self.save_references()
+                self.update_ref_combo()
+                self._refresh_management_tree()
+
+                success_msg = f"Reference '{self.pending_ref['name']}' saved successfully!"
+                print(success_msg)
+                self.update_result_ui(success_msg, "success")
+                self._show_top_message(
+                    "Reference Saved",
+                    f"Reference '{self.pending_ref['name']}' has been saved with ROI!\nDimensions: {rw}x{rh}px"
+                )
+
+                self.camera.clear_roi()
+                self.ref_var.set("")
+            self.adding_new_ref = False
+            self.pending_ref = None
+        elif self._roi_dragging:
+            self.camera.clear_roi()
+            self.camera.set_roi(rx, ry, rw, rh)
+            self.update_result_ui("ROI updated manually", "info")
+
+        self._roi_dragging = False
+        self.rect_start = None
 
     def load_references(self):
         if os.path.exists("references.json"):
-            try:
-                with open("references.json", "r") as f:
-                    return json.load(f)
-            except Exception:
-                pass
+            with open("references.json", "r") as f:
+                references = json.load(f)
+            for ref in references:
+                if 'ok_count' not in ref:
+                    ref['ok_count'] = 0
+                if 'nok_count' not in ref:
+                    ref['nok_count'] = 0
+                if 'roi' not in ref:
+                    ref['roi'] = None
+            return references
         return []
 
     def save_references(self):
         try:
             with open("references.json", "w") as f:
                 json.dump(self.references, f, indent=4)
+            print(f"✓ References saved successfully. Total: {len(self.references)}")
         except Exception as e:
-            print(f"Error saving reference dataset configurations: {e}")
+            print(f"✗ Error saving references: {e}")
+            tb.dialogs.Messagebox.show_error(f"Failed to save reference: {e}", title="Save Error", parent=self)
 
-    def on_ref_selected(self, event=None):
-        self.selected_reference_name = self.ref_var.get()
-        self._update_reference_counters()
+    def update_ref_combo(self):
+        self.ref_combo['values'] = [r['name'] for r in self.references]
 
-    def toggle_modbus(self):
-        self.modbus_enabled = not self.modbus_enabled
-        status = "ON" if self.modbus_enabled else "OFF"
-        style = "success" if self.modbus_enabled else "danger"
-        self.modbus_btn.configure(text=f"🔌 Modbus: {status}", bootstyle=style)
+    def _resolve_reference_from_plc(self, received_ref):
+        """
+        Resolve PLC-provided reference name.
+        1) exact match, 2) unique prefix match (to handle partial/slow writes).
+        """
+        if not received_ref:
+            return None
 
-    # ─── WINDOW HOOK BINDINGS ───
-    def _on_main_window_configure(self, event):
-        pass
+        cleaned = received_ref.strip()
+        lowered = cleaned.lower()
+        exact = next((r for r in self.references if r["name"].strip().lower() == lowered), None)
+        if exact:
+            return exact
 
-    def _on_camera_label_configure(self, event):
-        if event.width > 10 and event.height > 10:
-            self.camera_width = event.width
-            self.camera_height = event.height
+        prefix_matches = [r for r in self.references if r["name"].strip().lower().startswith(lowered)]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+        return None
+
+    def on_ref_selected(self, event):
+        ref_name = self.ref_var.get()
+        ref_data = next((r for r in self.references if r["name"] == ref_name), None)
+        if ref_data:
+            self.selected_reference_name = ref_data['name']
+            self.camera.set_roi(*ref_data["roi"])
+            self.camera.expected_text = ref_data["expected_text"]
+            self.update_result_ui(f"Active: {ref_data['name']}", "info")
+            if hasattr(self, 'selected_ref_label'):
+                self.selected_ref_label.configure(text=f"Reference: {ref_data['name']}")
+            if hasattr(self, 'ok_label'):
+                self.ok_label.configure(text=f"OK: {ref_data.get('ok_count', 0)}")
+            if hasattr(self, 'nok_label'):
+                self.nok_label.configure(text=f"NOK: {ref_data.get('nok_count', 0)}")
+            # Queue Modbus write to worker thread (never blocks main thread)
+            self.modbus_write_queue.put({"type": "write_result", "value": RESULT_IDLE})
 
     def on_mouse_down(self, event):
         self.rect_start = (event.x, event.y)
         self._roi_dragging = True
+        self.camera.temp_roi = None
 
     def on_mouse_drag(self, event):
-        if self._roi_dragging and self.rect_start:
-            pass
+        if self.rect_start:
+            self._roi_dragging = True
+            if self.camera.current_roi and self.camera.temp_roi is None:
+                self.camera.clear_roi()
+            
+            scale_x = 1 / (self.camera.display_scale_x or 1.0)
+            scale_y = 1 / (self.camera.display_scale_y or 1.0)
 
-    def on_mouse_up(self, event):
-        self._roi_dragging = False
-        if not self.rect_start:
-            return
-        x0, y0 = self.rect_start
-        x1, y1 = event.x, event.y
-        rx = min(x0, x1)
-        ry = min(y0, y1)
-        rw = abs(x1 - x0)
-        rh = abs(y1 - y0)
-        if rw > 10 and rh > 10:
-            selected_ref = next((r for r in self.references if r['name'] == self.selected_reference_name), None)
-            if selected_ref:
-                scaled_roi = self._preview_to_frame_roi((rx, ry, rw, rh), (self.camera_width, self.camera_height))
-                if scaled_roi:
-                    selected_ref['roi'] = scaled_roi
-                    self.save_references()
-                    self.update_result_ui("ROI Configuration Saved Successfully", "success")
+            x1, y1 = self.rect_start
+            x2, y2 = event.x, event.y
+            ui_x, ui_y = min(x1, x2), min(y1, y2)
+            ui_w, ui_h = abs(x2 - x1), abs(y2 - y1)
+            
+            frame_x = int(ui_x * scale_x)
+            frame_y = int(ui_y * scale_y)
+            frame_w = int(ui_w * scale_x)
+            frame_h = int(ui_h * scale_y)
 
-    # ─── BACKGROUND PROCESSING EXECUTION ───
+            self.camera.set_roi_temp(frame_x, frame_y, frame_w, frame_h)
+
+    def change_theme(self, name): tm.set_theme(self, name)
+
+    def toggle_modbus(self):
+        self._prompt_modbus_password()
+
+    def _toggle_modbus_state(self):
+        self.modbus_enabled = not self.modbus_enabled
+        if self.modbus_enabled:
+            self.modbus_btn.configure(text="Modbus: ON", bootstyle="success")
+            self.update_result_ui("Modbus reconnecting...", "info")
+        else:
+            self.modbus_btn.configure(text="Modbus: OFF", bootstyle="danger")
+            self.modbus_manager.disconnect()
+            self.update_result_ui("Modbus disconnected", "warning")
+
+    def _prompt_modbus_password(self):
+        sf = self._scale_font
+        mpw_w = 340 if IS_7INCH else 360
+        mpw_h = 170 if IS_7INCH else 180
+        win = self._create_child_window("Modbus Password", mpw_w, mpw_h, parent=self, resizable=(False, False))
+        tb.Label(win,
+                 text="Enter password to change Modbus state:",
+                 font=("Helvetica", sf(10) if IS_7INCH else 11),
+                 wraplength=mpw_w - 30, justify="center"
+                 ).pack(pady=(10 if IS_7INCH else 15, 4), padx=8)
+
+        password_var = tk.StringVar()
+        password_entry = tb.Entry(win, textvariable=password_var, show="*",
+                                  font=("Helvetica", sf(14)))
+        password_entry.pack(pady=4, padx=12, fill="x")
+        password_entry.focus_set()
+        win.bind("<Destroy>", lambda e: self._close_keyboard() if e.widget == win else None)
+        win.protocol("WM_DELETE_WINDOW", lambda: [self._close_keyboard(), win.destroy()])
+
+        def check_password(event=None):
+            if password_var.get().strip().upper() == "TUNITECH":
+                self._close_keyboard()
+                win.destroy()
+                self._toggle_modbus_state()
+                self._open_modbus_settings_window()
+            else:
+                tb.dialogs.Messagebox.show_error("Incorrect password, please try again.", title="Error", parent=win)
+                password_var.set("")
+                password_entry.focus_set()
+
+        password_entry.bind("<Return>", check_password)
+
+        bf_pady = (6, 8) if IS_7INCH else (8, 12)
+        button_frame = tb.Frame(win)
+        button_frame.pack(pady=bf_pady, padx=12, fill="x")
+        tb.Button(button_frame, text="Enter", bootstyle="success",
+                  command=check_password).pack(side="left", expand=True, fill="x", padx=(0, 4))
+        tb.Button(button_frame, text="Cancel", bootstyle="secondary",
+                  command=lambda: [self._close_keyboard(), win.destroy()]
+                  ).pack(side="left", expand=True, fill="x", padx=(4, 0))
+
+        win.after(100, lambda: self.show_virtual_keyboard(password_entry, None, password_var))
+
+    def _open_modbus_settings_window(self):
+        sf = self._scale_font
+        mset_w = 400 if IS_7INCH else 420
+        mset_h = 200 if IS_7INCH else 220
+        win = self._create_child_window("Modbus Settings", mset_w, mset_h, parent=self)
+        tp = 6 if IS_7INCH else 8
+        tb.Label(win, text="Modbus is now:",
+                 font=("Helvetica", sf(11), "bold")).pack(pady=(tp + 6, tp))
+        status_text = "ON" if self.modbus_enabled else "OFF"
+        status_bootstyle = "success" if self.modbus_enabled else "danger"
+        tb.Label(win, text=status_text,
+                 font=("Helvetica", sf(20) if IS_7INCH else 24, "bold"),
+                 bootstyle=status_bootstyle).pack(pady=(0, tp))
+        tb.Label(win, text="You can close this window to continue.",
+                 font=("Helvetica", sf(10) if IS_7INCH else 11),
+                 wraplength=mset_w - 40, justify="center"
+                 ).pack(pady=(0, tp), padx=8)
+        tb.Button(win, text="Close", bootstyle="primary",
+                  command=win.destroy).pack(pady=(0, tp))
+
+    def clear_zone(self):
+        self.camera.clear_roi()
+        self.ref_var.set("")
+        self.update_result_ui("Zone Cleared", "warning")
+        # Queue Modbus write to worker thread (never blocks main thread)
+        self.modbus_write_queue.put({"type": "write_result", "value": RESULT_IDLE})
+
     def _start_background_tasks(self):
-        def modbus_worker():
-            while self.running:
-                if self.modbus_enabled:
-                    try:
-                        if not self.modbus_manager.is_connected():
-                            self.modbus_manager.connect()
-                        
-                        # Process scheduled write actions
-                        while not self.modbus_write_queue.empty():
-                            task = self.modbus_write_queue.get_nowait()
-                            if task["type"] == "write_result":
-                                self.modbus_manager.write_result_register(task["value"])
-                        
-                        # Poll registry for trigger events
-                        trigger = self.modbus_manager.read_trigger_register()
-                        if trigger == 1:
-                            self.modbus_queue.put({"type": "trigger_test"})
-                    except Exception as e:
-                        print(f"Modbus Thread Communication error profile: {e}")
-                time.sleep(self.poll_interval)
-
-        def camera_worker():
-            while self.running:
-                if self.main_camera_display and self.camera:
-                    frame = self.camera.capture_frame()
-                    if frame is not None:
-                        self.camera_queue.put(frame)
-                time.sleep(0.03)
-
-        self.modbus_thread = threading.Thread(target=modbus_worker, daemon=True)
-        self.camera_thread = threading.Thread(target=camera_worker, daemon=True)
+        """Starts the Modbus and Camera worker threads."""
+        self.modbus_thread = threading.Thread(target=self._modbus_worker, daemon=True)
+        self.camera_thread = threading.Thread(target=self._camera_worker, daemon=True)
         self.modbus_thread.start()
         self.camera_thread.start()
 
+    def _modbus_worker(self):
+        """Worker thread for Modbus communication."""
+        while self.running:
+            try:
+                # Process any pending write operations first (highest priority)
+                try:
+                    while True:
+                        write_item = self.modbus_write_queue.get_nowait()
+                        if write_item["type"] == "write_result":
+                            if self.modbus_enabled and self.modbus_manager.connected:
+                                self.modbus_manager.write_result(write_item["value"])
+                        elif write_item["type"] == "acknowledge_start":
+                            if self.modbus_enabled and self.modbus_manager.connected:
+                                self.modbus_manager.acknowledge_start()
+                except queue.Empty:
+                    pass
+                
+                # Check if Modbus is disabled
+                if not self.modbus_enabled:
+                    time.sleep(0.5)
+                    continue
+                
+                # Attempt to connect if not already connected
+                if not self.modbus_manager.connected:
+                    self.modbus_manager.connect()
+                    if not self.modbus_manager.connected:
+                        self.modbus_queue.put({"type": "status", "text": "PLC Disconnected", "bootstyle": "secondary"})
+                        self._modbus_was_connected = False
+                        time.sleep(self.poll_interval)
+                        continue # Try connecting again after a delay
+
+                # If connected, poll for PLC inputs
+                current_time = time.time()
+                if (current_time - self.last_poll_time) > self.poll_interval:
+                    self.last_poll_time = current_time
+                    plc_inputs = self.modbus_manager.read_plc_inputs()
+
+                    if plc_inputs is None:
+                        # Disconnection detected or read error
+                        if self.modbus_manager.connected:
+                            self.modbus_manager.disconnect()
+                        self.modbus_queue.put({"type": "status", "text": "PLC Disconnected", "bootstyle": "secondary"})
+                        self._modbus_was_connected = False
+                        continue # Will attempt to reconnect in next loop iteration
+
+                    # Only report successful connection once after a disconnection
+                    if not self._modbus_was_connected and self.modbus_manager.connected:
+                        self.modbus_queue.put({"type": "status", "text": "PLC Connected", "bootstyle": "success"})
+                        self._modbus_was_connected = True
+                    
+                    self.modbus_queue.put({"type": "plc_inputs", "data": plc_inputs})
+                    
+                time.sleep(0.1) # Small delay to prevent busy-waiting
+            except Exception as e:
+                self.modbus_queue.put({"type": "error", "message": f"Modbus worker error: {e}"})
+                self._modbus_was_connected = False # Assume disconnected on error
+                time.sleep(1) # Wait a bit before retrying after an error
+
+    def _camera_worker(self):
+        """Worker thread for camera feed processing."""
+        # Initial camera start attempt
+        camera_started = False
+        while not camera_started and self.running:
+            self.camera_queue.put({"type": "status", "text": "Starting camera...", "bootstyle": "info"})
+            camera_started = self.camera.start_camera(0)
+            if not camera_started:
+                self.camera_queue.put({"type": "status", "text": "Camera failed to start, retrying...", "bootstyle": "danger"})
+                time.sleep(3) # Wait before retrying camera
+        frame_count = 0
+        while self.running:
+            img_tk, is_match = self.camera.get_frame(
+                self.camera_width,
+                self.camera_height,
+                run_ocr=False
+            )
+            
+            if img_tk:
+                # Prevent queue buildup by dropping old frames if the GUI is lagging
+                try:
+                    while self.camera_queue.qsize() > 2:
+                        self.camera_queue.get_nowait()
+                    self.camera_queue.put({"type": "frame", "img_tk": img_tk, "is_match": is_match})
+                except queue.Empty:
+                    pass
+            
+            frame_count += 1
+            time.sleep(0.03) # Lower CPU load while keeping a smooth frame rate
+
     def update_gui_from_queues(self):
-        """Processes threading interface queues safely inside Tkinter loop execution context."""
+        if not self.running: return
+
+        # Process camera queue
+        latest_frame = None
         try:
-            while not self.modbus_queue.empty():
-                msg = self.modbus_queue.get_nowait()
-                if msg["type"] == "trigger_test" and not self._test_in_progress:
-                    self._test_in_progress = True
-                    self.update_result_ui("Testing operational matrix...", "secondary")
-                    self.after(10, lambda: [self._run_selected_reference_test(), setattr(self, '_test_in_progress', False)])
+            while True:
+                item = self.camera_queue.get_nowait()
+                if item["type"] == "frame":
+                    if self.main_camera_display:
+                        latest_frame = item["img_tk"]
+                        self.camera_label.image = item["img_tk"]
+                elif item["type"] == "status":
+                    self.update_result_ui(item["text"], item["bootstyle"])
+                elif item["type"] == "error":
+                    print(f"Camera worker error: {item['message']}") # Log or display error
+                self.camera_queue.task_done()
         except queue.Empty:
             pass
 
+        if latest_frame is not None and self.main_camera_display:
+            self.camera_label.configure(image=latest_frame)
+
+        # Process Modbus queue
         try:
-            last_frame = None
-            while not self.camera_queue.empty():
-                last_frame = self.camera_queue.get_nowait()
-            
-            if last_frame is not None and self.main_camera_display:
-                selected_ref = next((r for r in self.references if r['name'] == self.selected_reference_name), None)
-                roi = selected_ref['roi'] if selected_ref else None
-                img, _ = self.camera.get_preview_image(
-                    target_width=self.camera_width,
-                    target_height=self.camera_height,
-                    overlay_roi=roi
-                )
-                if img:
-                    self.camera_label.configure(image=img)
-                    self.camera_label.image = img
+            while True:
+                item = self.modbus_queue.get_nowait()
+                if item["type"] == "status":
+                    self.update_result_ui(item["text"], item["bootstyle"])
+                elif item["type"] == "plc_test_result":
+                    match = item.get("data", {}).get("match")
+                    if match:
+                        self.update_result_ui("OK", "success")
+                    else:
+                        self.update_result_ui("NOK", "danger")
+                    # Update counters for selected ref
+                    self._update_reference_counters(match)
+                elif item["type"] == "plc_inputs":
+                    self._process_plc_inputs(item["data"])
+                elif item["type"] == "error":
+                    print(f"Modbus worker error: {item['message']}") # Log or display error
+                self.modbus_queue.task_done()
         except queue.Empty:
             pass
 
         self.after(30, self.update_gui_from_queues)
+
+    def _process_plc_inputs(self, plc_inputs):
+        if not plc_inputs:
+            return
+
+        received_ref = plc_inputs.get('reference', '').strip()
+        start_test = plc_inputs.get('start_test')
+        resolved_ref = self._resolve_reference_from_plc(received_ref) if received_ref else None
+
+        # Show raw PLC value only when it cannot be resolved yet.
+        if received_ref and not resolved_ref:
+            self.ref_var.set(received_ref)
+
+        # Update combobox selection when a valid/uniquely-resolved ref arrives.
+        # Re-apply if current selected reference does not match, even when same PLC ref repeats.
+        if resolved_ref and (
+            resolved_ref['name'] != self.last_plc_ref
+            or self.selected_reference_name != resolved_ref['name']
+        ):
+            self.last_plc_ref = resolved_ref['name']
+            self.ref_var.set(resolved_ref['name'])
+            self.on_ref_selected(None)
+            self.update_result_ui(f"PLC selected: {resolved_ref['name']}", "info")
+
+        # PLC start-test bit triggers same OCR flow as GUI Test button.
+        if start_test:
+            # Start the OCR test in a background thread to avoid blocking the GUI.
+            self._start_test_thread()
+            # Acknowledge reg 15 back to 0 so simulator start button can be pressed again.
+            self.modbus_write_queue.put({"type": "acknowledge_start"})
+
+    def _on_main_window_configure(self, event):
+        if event.widget == self:
+            new_height = event.height
+            base_size = 14 if IS_7INCH else 18
+            scaled_size = max(base_size, int(new_height / 40))
+            self.result_label.configure(font=("Helvetica", scaled_size, "bold"))
+
+    def _on_camera_label_configure(self, event):
+        # Update camera_label dimensions when it resizes
+        if event.width > 0 and event.height > 0:
+            self.camera_width = event.width
+            self.camera_height = event.height
+
+    def _start_test_thread(self):
+        """Start OCR test in background thread and deliver result back to GUI via queue."""
+        if self._test_in_progress:
+            return
+
+        # Validate selection on main thread before starting
+        ref_name = self.ref_var.get().strip()
+        selected_ref = next((r for r in self.references if r['name'] == ref_name), None)
+        if not selected_ref:
+            self.update_result_ui("FAIL: No Active Reference", "danger")
+            return
+
+        self._test_in_progress = True
+        self.update_result_ui("Running...", "secondary")
+
+        def worker():
+            try:
+                # Ensure camera is configured for this reference
+                self.camera.set_roi(*selected_ref['roi'])
+                self.camera.expected_text = selected_ref['expected_text']
+                detected, match = self.camera.perform_ocr_once()
+
+                # Send result back to main thread via queue for safe UI updates
+                self.modbus_queue.put({"type": "plc_test_result", "data": {"match": match}})
+
+                # Queue write to PLC result register
+                if match:
+                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_OK})
+                else:
+                    self.modbus_write_queue.put({"type": "write_result", "value": RESULT_NOK})
+            except Exception as e:
+                self.modbus_queue.put({"type": "status", "text": f"Test error: {e}", "bootstyle": "danger"})
+            finally:
+                self._test_in_progress = False
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
 
 
 if __name__ == "__main__":
     if not os.path.exists("references.json"):
         with open("references.json", "w") as f:
             json.dump([], f)
+            
     app = MainApp()
     app.mainloop()
