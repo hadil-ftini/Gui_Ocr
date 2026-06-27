@@ -4575,3 +4575,11 @@
 2026-06-22 12:20:35,691 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
 2026-06-22 12:20:38,736 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
 2026-06-22 12:20:40,387 [INFO] ModbusManager: Disconnected from PLC
+2026-06-27 12:00:44,972 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-06-27 12:00:48,010 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-06-27 12:00:51,043 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-06-27 12:00:54,082 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-06-27 12:00:57,123 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-06-27 12:01:00,154 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-06-27 12:01:03,190 [ERROR] pymodbus.logging: Connection to (127.0.0.1, 5502) failed: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-06-27 12:01:03,434 [INFO] ModbusManager: Disconnected from PLC

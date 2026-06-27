@@ -27,6 +27,28 @@ class CameraApp:
         self._last_pil_image = None
         self._last_frame_hash = 0
 
+    def _normalize_text(self, text):
+        """Return a tuple (strict, corrected) where:
+        - strict: uppercase alphanumeric cleaned text
+        - corrected: apply common OCR confusion corrections to strict
+        """
+        if not text:
+            return "", ""
+        # Remove any non-alphanumeric characters and uppercase
+        strict = re.sub(r'[^A-Za-z0-9]+', '', text).upper()
+        # Common OCR confusion mappings (map ambiguous letters to likely digits)
+        mappings = {
+            'O': '0',
+            'Q': '0',
+            'I': '1',
+            'L': '1',
+            'Z': '2',
+            'S': '5',
+            'B': '8',
+            'G': '6'
+        }
+        corrected = ''.join(mappings.get(ch, ch) for ch in strict)
+        return strict, corrected
     def start_camera(self, camera_index=1):
         camera_index=1
         self.cap = cv2.VideoCapture(0)
@@ -97,21 +119,28 @@ class CameraApp:
 
         # OCR with whitelist
         try:
-            config = '--psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.'
+            config = '--psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
             detected_text = pytesseract.image_to_string(thresh, config=config)
-            filtered_text = re.sub(r'[^A-Za-z0-9\-.]+', '', detected_text).strip()
-            self.last_detected_text = filtered_text
+            # Keep only alphanumeric characters (remove spaces, punctuation)
+            filtered_text = re.sub(r'[^A-Za-z0-9]+', '', detected_text).strip()
         except Exception:
             self.last_detected_text = "OCR Error"
             self.is_match = False
             self.ocr_done = True
             return
 
-        # Compare detected text with the selected reference text
-        if filtered_text:
-            self.is_match = filtered_text.lower() == self.expected_text.strip().lower()
-        else:
-            self.is_match = False
+        # Normalize and correct common OCR confusions
+        strict, corrected = self._normalize_text(filtered_text)
+        exp_strict, exp_corrected = self._normalize_text(self.expected_text or "")
+        # Prefer corrected display, but fall back to strict when empty
+        display_text = corrected or strict
+        self.last_detected_text = display_text
+
+        # Compare multiple normalized variants to be tolerant to common OCR mistakes
+        self.is_match = False
+        if strict and exp_strict:
+            if (strict == exp_strict) or (corrected == exp_corrected) or (strict == exp_corrected) or (corrected == exp_strict):
+                self.is_match = True
 
         self.ocr_done = True
 
